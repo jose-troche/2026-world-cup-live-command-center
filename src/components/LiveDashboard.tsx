@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -16,6 +16,8 @@ import { Activity, Clock3, MapPin, Radio, ScanLine } from "lucide-react";
 import { buildXgRace, expectedGoals, winProbability } from "../lib/analytics";
 import type { Match, Stadium, Team } from "../types";
 import { Flag } from "./Flag";
+
+type MatchListMode = "next" | "former";
 
 type Props = {
   match: Match;
@@ -68,6 +70,7 @@ function formatVenue(stadium?: Stadium) {
 }
 
 export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }: Props) {
+  const [matchListMode, setMatchListMode] = useState<MatchListMode>("next");
   const teamById = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams]);
   const homeTeam = teamById.get(match.homeId);
   const awayTeam = teamById.get(match.awayId);
@@ -83,10 +86,11 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
   ];
 
   const relevantMatches = matches
-    .filter((item) => item.type === "group")
+    .filter((item) => item.type === "group" && (matchListMode === "former" ? item.status === "finished" : item.status !== "finished"))
     .sort((a, b) => {
+      if (matchListMode === "former") return getMatchDate(b).getTime() - getMatchDate(a).getTime();
       const rank = { live: 0, scheduled: 1, finished: 2 };
-      return rank[a.status] - rank[b.status] || Number(a.id) - Number(b.id);
+      return rank[a.status] - rank[b.status] || getMatchDate(a).getTime() - getMatchDate(b).getTime();
     })
     .slice(0, 8);
 
@@ -96,6 +100,20 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
         <div className="ticker-label">
           <Radio size={15} />
           Match schedule
+        </div>
+        <div className="ticker-mode" role="group" aria-label="Match schedule view">
+          <button
+            className={matchListMode === "next" ? "active" : ""}
+            onClick={() => setMatchListMode("next")}
+          >
+            Now / next
+          </button>
+          <button
+            className={matchListMode === "former" ? "active" : ""}
+            onClick={() => setMatchListMode("former")}
+          >
+            Former scores
+          </button>
         </div>
         <div className="ticker-scroll">
           {relevantMatches.map((item) => {

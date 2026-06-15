@@ -230,5 +230,5 @@ export const fallbackData: TournamentData = {
   stadiums: fallbackStadiums,
   source: "fallback",
   updatedAt: new Date("2026-06-15T00:00:00Z").toISOString(),
-  warning: "Live data is temporarily unavailable. Displaying the latest bundled tournament snapshot.",
+  warning: "Live updates are temporarily paused. You can continue with the saved tournament snapshot.",
 };

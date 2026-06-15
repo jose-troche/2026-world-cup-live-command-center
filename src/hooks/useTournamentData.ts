@@ -4,6 +4,12 @@ import type { TournamentData } from "../types";
 
 const POLL_INTERVAL = 45_000;
 
+export function getTournamentAvailabilityMessage(hasLiveSnapshot: boolean) {
+  return hasLiveSnapshot
+    ? "Live updates are temporarily paused. Showing the most recent update."
+    : "Live updates are temporarily paused. You can continue with the saved tournament snapshot.";
+}
+
 export function useTournamentData() {
   const [data, setData] = useState<TournamentData>(fallbackData);
   const [loading, setLoading] = useState(true);
@@ -15,19 +21,14 @@ export function useTournamentData() {
       const response = await fetch("/api/tournament", {
         headers: { Accept: "application/json" },
       });
-      if (!response.ok) throw new Error(`Tournament API returned ${response.status}`);
+      if (!response.ok) throw new Error("Tournament data is unavailable");
       const payload = (await response.json()) as TournamentData;
       setData(payload);
-    } catch (error) {
+    } catch {
       setData((current) => ({
         ...current,
         source: current.source === "live" ? "live" : "fallback",
-        warning:
-          current.source === "live"
-            ? "Live refresh unavailable. Displaying the most recent successful update."
-            : error instanceof Error
-              ? error.message
-              : fallbackData.warning,
+        warning: getTournamentAvailabilityMessage(current.source === "live"),
       }));
     } finally {
       setLoading(false);

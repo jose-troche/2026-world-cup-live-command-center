@@ -166,7 +166,7 @@ export default {
       } catch (error) {
         return json(
           {
-            error: "Live tournament provider is temporarily unavailable.",
+            error: "Live tournament data is temporarily unavailable.",
             detail: error instanceof Error ? error.message : "Unknown upstream error",
           },
           502,
@@ -175,6 +175,6 @@ export default {
       }
     }
 
-    return json({ error: "Not found" }, 404, "no-store");
+    return json({ error: "The requested endpoint was not found." }, 404, "no-store");
   },
 };

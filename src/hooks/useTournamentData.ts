@@ -24,7 +24,7 @@ export function useTournamentData() {
         source: current.source === "live" ? "live" : "fallback",
         warning:
           current.source === "live"
-            ? "Refresh missed. Retaining the last successful live snapshot."
+            ? "Live refresh unavailable. Displaying the most recent successful update."
             : error instanceof Error
               ? error.message
               : fallbackData.warning,

@@ -29,7 +29,7 @@ export function GroupForecast({ groups, matches, teams }: Props) {
   const group = groups.find((item) => item.name === selectedGroup) ?? groups[0];
   const teamById = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams]);
 
-  if (!group) return <div className="empty-state panel">Standings are loading.</div>;
+  if (!group) return <div className="empty-state panel">Loading group standings…</div>;
 
   const rows = [...group.standings]
     .sort((a, b) => b.points - a.points || b.goalDifference - a.goalDifference)
@@ -48,11 +48,11 @@ export function GroupForecast({ groups, matches, teams }: Props) {
     <div className="lab-stack">
       <section className="lab-intro">
         <div>
-          <span className="eyebrow">Tournament model</span>
-          <h2>Group advancement forecast</h2>
-          <p>Every remaining group match is simulated 700 times, including the eight best third-place paths.</p>
+          <span className="eyebrow">Qualification model</span>
+          <h2>Group advancement outlook</h2>
+          <p>We simulate every remaining group fixture 700 times, including qualification through the eight best third-place positions.</p>
         </div>
-        <div className="model-badge"><Sparkles size={16} /> Monte Carlo · 700 runs</div>
+        <div className="model-badge"><Sparkles size={16} /> 700 simulations</div>
       </section>
 
       <div className="group-tabs" aria-label="Select group">
@@ -71,14 +71,14 @@ export function GroupForecast({ groups, matches, teams }: Props) {
         <article className="panel table-panel">
           <div className="section-heading">
             <div>
-              <span className="eyebrow">Current table</span>
+              <span className="eyebrow">Live standings</span>
               <h3>Group {group.name}</h3>
             </div>
             <BarChart3 size={19} />
           </div>
           <div className="standings-table">
             <div className="table-row table-head">
-              <span>#</span><span>Team</span><span>P</span><span>GD</span><span>Pts</span><span>Advance</span>
+              <span>#</span><span>Team</span><span>PL</span><span>GD</span><span>Pts</span><span>Qualify</span>
             </div>
             {rows.map((row, index) => (
               <div className="table-row" key={row.teamId}>
@@ -95,16 +95,16 @@ export function GroupForecast({ groups, matches, teams }: Props) {
             ))}
           </div>
           <div className="qualification-key">
-            <span><i className="direct" /> Top two qualify directly</span>
-            <span><i className="third" /> Best eight third-place teams qualify</span>
+            <span><i className="direct" /> First and second qualify automatically</span>
+            <span><i className="third" /> Eight best third-place teams also advance</span>
           </div>
         </article>
 
         <article className="panel forecast-chart">
           <div className="section-heading">
             <div>
-              <span className="eyebrow">Projection</span>
-              <h3>Round of 32 chance</h3>
+              <span className="eyebrow">Model projection</span>
+              <h3>Probability of qualification</h3>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={315}>
@@ -114,7 +114,7 @@ export function GroupForecast({ groups, matches, teams }: Props) {
               <YAxis type="category" dataKey="name" stroke="#b7c1bd" tickLine={false} axisLine={false} width={44} />
               <Tooltip
                 cursor={{ fill: "rgba(217,255,67,.04)" }}
-                formatter={(value) => [`${value}%`, "Advance"]}
+                formatter={(value) => [`${value}%`, "Qualification probability"]}
                 contentStyle={{ background: "#101b17", border: "1px solid #2a3933", borderRadius: 12 }}
               />
               <Bar dataKey="probability" radius={[0, 8, 8, 0]} barSize={30}>
@@ -124,7 +124,7 @@ export function GroupForecast({ groups, matches, teams }: Props) {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-          <p className="model-note"><Info size={14} /> Ratings are directional estimates, not betting advice.</p>
+          <p className="model-note"><Info size={14} /> Projections update with the standings and are not betting advice.</p>
         </article>
       </section>
     </div>

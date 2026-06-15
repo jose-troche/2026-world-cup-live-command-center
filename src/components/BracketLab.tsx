@@ -30,7 +30,7 @@ function Pair({ teams, winnerId, onPick, compact }: PairProps) {
           <b>{getRating(team.name)}</b>
         </button>
       ))}
-      {teams.length < 2 && <div className="bracket-tbd">Awaiting winner</div>}
+      {teams.length < 2 && <div className="bracket-tbd">Select the previous winner</div>}
     </div>
   );
 }
@@ -92,13 +92,13 @@ export function BracketLab({ teams }: Props) {
     <div className="lab-stack">
       <section className="lab-intro bracket-intro">
         <div>
-          <span className="eyebrow">Interactive scenario</span>
-          <h2>Knockout path simulator</h2>
-          <p>Pick each winner or let the strength model play out a projected contender bracket.</p>
+          <span className="eyebrow">Knockout scenarios</span>
+          <h2>Route-to-the-title simulator</h2>
+          <p>Select each winner or run the team-strength model to explore one possible path through the knockout rounds.</p>
         </div>
         <div className="lab-actions">
-          <button className="ghost-button" onClick={reset}><RotateCcw size={15} /> Reset</button>
-          <button className="primary-button" onClick={runSimulation}><Dices size={16} /> Simulate</button>
+          <button className="ghost-button" onClick={reset}><RotateCcw size={15} /> Clear bracket</button>
+          <button className="primary-button" onClick={runSimulation}><Dices size={16} /> Run simulation</button>
         </div>
       </section>
 
@@ -142,17 +142,17 @@ export function BracketLab({ teams }: Props) {
             <>
               <Flag team={championTeam} size="lg" />
               <strong>{championTeam.name}</strong>
-              <span>Projected champion</span>
+              <span>Winner of this scenario</span>
             </>
           ) : (
             <>
-              <strong>Your call</strong>
-              <span>Build a path to the trophy</span>
+              <strong>Title winner</strong>
+              <span>Complete the bracket to decide</span>
             </>
           )}
         </div>
       </section>
-      <p className="wide-note">The simulator starts with eight top-rated contenders to keep scenario building fast. It is not an official tournament bracket.</p>
+      <p className="wide-note">This exploratory bracket features eight leading model-rated teams. It does not represent the official tournament draw.</p>
     </div>
   );
 }

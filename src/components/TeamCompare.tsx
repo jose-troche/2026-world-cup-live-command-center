@@ -23,7 +23,7 @@ export function TeamCompare({ teams }: Props) {
   const left = sorted.find((team) => team.id === leftId) ?? sorted[0];
   const right = sorted.find((team) => team.id === rightId) ?? sorted[1];
 
-  if (!left || !right) return <div className="empty-state panel">Team data is loading.</div>;
+  if (!left || !right) return <div className="empty-state panel">Loading team profiles…</div>;
 
   const leftMetrics = getTeamMetrics(left);
   const rightMetrics = getTeamMetrics(right);
@@ -46,22 +46,22 @@ export function TeamCompare({ teams }: Props) {
     <div className="lab-stack">
       <section className="lab-intro">
         <div>
-          <span className="eyebrow">Matchup intelligence</span>
-          <h2>Team comparison explorer</h2>
-          <p>Compare tactical profiles, core strengths, and a neutral-site head-to-head projection.</p>
+          <span className="eyebrow">Head-to-head analysis</span>
+          <h2>Team comparison</h2>
+          <p>Compare modeled team profiles, key strengths, form index, and the projected edge in a neutral-site knockout match.</p>
         </div>
       </section>
 
       <section className="compare-selector panel">
         <label>
-          <span>Team one</span>
+          <span>First team</span>
           <div><Flag team={left} size="sm" /><select value={left.id} onChange={(event) => setLeftId(event.target.value)}>
             {sorted.filter((team) => team.id !== right.id).map((team) => <option value={team.id} key={team.id}>{team.name}</option>)}
           </select></div>
         </label>
         <button className="swap-button" onClick={swap} aria-label="Swap teams"><ArrowLeftRight size={18} /></button>
         <label>
-          <span>Team two</span>
+          <span>Second team</span>
           <div><Flag team={right} size="sm" /><select value={right.id} onChange={(event) => setRightId(event.target.value)}>
             {sorted.filter((team) => team.id !== left.id).map((team) => <option value={team.id} key={team.id}>{team.name}</option>)}
           </select></div>
@@ -72,8 +72,8 @@ export function TeamCompare({ teams }: Props) {
         <article className="panel radar-panel">
           <div className="section-heading">
             <div>
-              <span className="eyebrow">Style fingerprint</span>
-              <h3>Tactical radar</h3>
+              <span className="eyebrow">Team profile</span>
+              <h3>Comparative strengths</h3>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={390}>
@@ -101,7 +101,7 @@ export function TeamCompare({ teams }: Props) {
             <span style={{ width: `${leftChance}%` }} />
           </div>
           <div className="h2h-labels">
-            <strong>{leftChance}%</strong><span>Projected knockout edge</span><strong>{100 - leftChance}%</strong>
+            <strong>{leftChance}%</strong><span>Projected chance to advance</span><strong>{100 - leftChance}%</strong>
           </div>
 
           <div className="metric-duels">
@@ -109,7 +109,7 @@ export function TeamCompare({ teams }: Props) {
               { label: "Attacking threat", icon: Swords, left: leftMetrics.attack, right: rightMetrics.attack },
               { label: "Defensive security", icon: ShieldCheck, left: leftMetrics.defense, right: rightMetrics.defense },
               { label: "Transition speed", icon: Zap, left: leftMetrics.transition, right: rightMetrics.transition },
-              { label: "Current form", icon: Gauge, left: leftMetrics.form, right: rightMetrics.form },
+              { label: "Form index", icon: Gauge, left: leftMetrics.form, right: rightMetrics.form },
             ].map((metric) => (
               <div className="metric-duel" key={metric.label}>
                 <strong>{metric.left}</strong>

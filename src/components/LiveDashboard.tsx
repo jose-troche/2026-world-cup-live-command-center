@@ -27,7 +27,7 @@ type Props = {
 
 function statusLabel(match: Match) {
   if (match.status === "live") return `${match.minute}' LIVE`;
-  if (match.status === "finished") return "FULL TIME";
+  if (match.status === "finished") return "FINAL";
   const [, time = ""] = match.localDate.split(" ");
   return time;
 }
@@ -70,7 +70,7 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
       <section className="match-ticker panel">
         <div className="ticker-label">
           <Radio size={15} />
-          Matchwire
+          Match schedule
         </div>
         <div className="ticker-scroll">
           {relevantMatches.map((item) => {
@@ -134,21 +134,21 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
 
           <div className="match-meta">
             <span><Clock3 size={14} /> {formatDate(match.localDate)}</span>
-            <span><MapPin size={14} /> {stadium?.name ?? "World Cup venue"}</span>
+            <span><MapPin size={14} /> {stadium?.name ?? "Venue to be confirmed"}</span>
           </div>
 
           <div className="signal-strip">
             <div>
-              <span>Model xG</span>
+              <span>Projected xG</span>
               <strong>{xg.home.toFixed(2)} <i>–</i> {xg.away.toFixed(2)}</strong>
             </div>
             <div>
-              <span>Pre-match xG</span>
+              <span>Pre-match baseline</span>
               <strong>{preMatchXg.home.toFixed(2)} <i>–</i> {preMatchXg.away.toFixed(2)}</strong>
             </div>
             <div>
-              <span>Game state</span>
-              <strong>{match.status === "live" ? "Open" : match.status === "finished" ? "Settled" : "Pre-match"}</strong>
+              <span>Match phase</span>
+              <strong>{match.status === "live" ? "In play" : match.status === "finished" ? "Final" : "Upcoming"}</strong>
             </div>
           </div>
         </article>
@@ -156,8 +156,8 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
         <article className="panel win-card">
           <div className="section-heading">
             <div>
-              <span className="eyebrow">Live model</span>
-              <h3>Win probability</h3>
+              <span className="eyebrow">Outcome model</span>
+              <h3>Match result probability</h3>
             </div>
             <Activity size={19} />
           </div>
@@ -180,7 +180,7 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
             </ResponsiveContainer>
             <div className="donut-center">
               <strong>{Math.round(Math.max(probability.home, probability.away, probability.draw) * 100)}%</strong>
-              <span>top outcome</span>
+              <span>most likely outcome</span>
             </div>
           </div>
           <div className="probability-legend">
@@ -198,8 +198,8 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
         <article className="panel xg-panel">
           <div className="section-heading">
             <div>
-              <span className="eyebrow">Chance creation</span>
-              <h3>Expected goals race</h3>
+              <span className="eyebrow">Chance quality model</span>
+              <h3>Projected xG timeline</h3>
             </div>
             <div className="chart-legend">
               <span><i className="lime" />{homeTeam?.code ?? "HOME"}</span>
@@ -224,7 +224,7 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
                 <YAxis stroke="#6f7c77" tickLine={false} axisLine={false} domain={[0, "auto"]} />
                 <Tooltip
                   contentStyle={{ background: "#101b17", border: "1px solid #2a3933", borderRadius: 12 }}
-                  labelFormatter={(value) => `${value}' minute`}
+                  labelFormatter={(value) => `Minute ${value}`}
                 />
                 {match.status === "live" && <ReferenceLine x={match.minute} stroke="#f5f7f6" strokeDasharray="4 4" />}
                 <Area type="stepAfter" dataKey="home" stroke="#d9ff43" strokeWidth={2.5} fill="url(#homeGradient)" />
@@ -234,15 +234,15 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
           </div>
           <p className="model-note">
             <ScanLine size={14} />
-            Model-estimated xG from team strength and game state. The public live feed does not supply shot locations.
+            Estimated from team strength and match state; the public feed does not include shot-location data.
           </p>
         </article>
 
         <article className="panel momentum-panel">
           <div className="section-heading">
             <div>
-              <span className="eyebrow">Match pulse</span>
-              <h3>Pressure map</h3>
+              <span className="eyebrow">Model outlook</span>
+              <h3>Attacking territory</h3>
             </div>
           </div>
           <div className="pitch-map">
@@ -265,9 +265,13 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
             <div className="territory home" style={{ width: `${45 + probability.home * 20}%` }} />
           </div>
           <div className="pressure-stats">
-            <div><strong>{Math.round(48 + probability.home * 20)}%</strong><span>territorial pressure</span></div>
-            <div><strong>{Math.round(52 - probability.home * 20)}%</strong><span>territorial pressure</span></div>
+            <div><strong>{Math.round(48 + probability.home * 20)}%</strong><span>projected attacking share</span></div>
+            <div><strong>{Math.round(52 - probability.home * 20)}%</strong><span>projected attacking share</span></div>
           </div>
+          <p className="model-note">
+            <ScanLine size={14} />
+            A modeled territory outlook, not live player-tracking data.
+          </p>
         </article>
       </section>
     </div>

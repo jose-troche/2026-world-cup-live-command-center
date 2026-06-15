@@ -13,18 +13,20 @@ import {
 } from "lucide-react";
 import { BracketLab } from "./components/BracketLab";
 import { GroupForecast } from "./components/GroupForecast";
+import { IntroExperience } from "./components/IntroExperience";
 import { LiveDashboard } from "./components/LiveDashboard";
 import { TeamCompare } from "./components/TeamCompare";
 import { useTournamentData } from "./hooks/useTournamentData";
+import { saveIntroPreference, shouldHideIntro } from "./lib/introPreference";
 import type { Match } from "./types";
 
 type View = "live" | "groups" | "bracket" | "compare";
 
 const navigation: Array<{ id: View; label: string; icon: typeof Command }> = [
-  { id: "live", label: "Command center", icon: Command },
-  { id: "groups", label: "Group forecast", icon: BarChart3 },
-  { id: "bracket", label: "Bracket lab", icon: Brackets },
-  { id: "compare", label: "Team explorer", icon: GitCompareArrows },
+  { id: "live", label: "Match center", icon: Command },
+  { id: "groups", label: "Advancement", icon: BarChart3 },
+  { id: "bracket", label: "Bracket simulator", icon: Brackets },
+  { id: "compare", label: "Team comparison", icon: GitCompareArrows },
 ];
 
 function getFeaturedMatch(matches: Match[]) {
@@ -48,6 +50,9 @@ function App() {
   const [view, setView] = useState<View>("live");
   const [selectedMatchId, setSelectedMatchId] = useState<string>();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [introOpen, setIntroOpen] = useState(
+    () => !shouldHideIntro(typeof window === "undefined" ? undefined : window.localStorage),
+  );
   const featuredMatch = useMemo(() => getFeaturedMatch(data.matches), [data.matches]);
   const selectedMatch =
     data.matches.find((match) => match.id === selectedMatchId) ?? featuredMatch;
@@ -69,8 +74,17 @@ function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  function closeIntro(hideNextTime: boolean) {
+    saveIntroPreference(
+      hideNextTime,
+      typeof window === "undefined" ? undefined : window.localStorage,
+    );
+    setIntroOpen(false);
+  }
+
   return (
     <div className="app-shell">
+      {introOpen && <IntroExperience onClose={closeIntro} />}
       <header className="topbar">
         <button className="mobile-menu" onClick={() => setMenuOpen(!menuOpen)} aria-label="Toggle navigation">
           {menuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -96,9 +110,9 @@ function App() {
         <div className="data-status">
           <span className={data.source === "live" ? "live-source" : "fallback-source"}>
             <i />
-            {data.source === "live" ? "Live feed" : "Snapshot"}
+            {data.source === "live" ? "Live data" : "Saved snapshot"}
           </span>
-          <button onClick={refresh} disabled={refreshing} aria-label="Refresh data">
+          <button onClick={refresh} disabled={refreshing} aria-label="Refresh tournament data">
             <RefreshCw size={15} className={refreshing ? "spinning" : ""} />
           </button>
         </div>
@@ -107,18 +121,18 @@ function App() {
       <main>
         <section className="page-masthead">
           <div>
-            <span className="tournament-label">FIFA WORLD CUP 2026 · UNITED STATES / CANADA / MEXICO</span>
+            <span className="tournament-label">WORLD CUP 2026 · UNITED STATES · CANADA · MEXICO</span>
             <h1>
-              {view === "live" && <>The match is speaking.<br /><em>Read every signal.</em></>}
-              {view === "groups" && <>One table. Thousands<br /><em>of possible endings.</em></>}
-              {view === "bracket" && <>Every champion needs<br /><em>a path through chaos.</em></>}
-              {view === "compare" && <>Two teams enter.<br /><em>The data takes sides.</em></>}
+              {view === "live" && <>Every match,<br /><em>in sharper focus.</em></>}
+              {view === "groups" && <>See the table<br /><em>before it settles.</em></>}
+              {view === "bracket" && <>Trace every route<br /><em>to the title.</em></>}
+              {view === "compare" && <>Measure how the<br /><em>contenders match up.</em></>}
             </h1>
           </div>
           <div className="masthead-meta">
-            <div><Wifi size={15} /><span>Data updated</span><strong>{updated}</strong></div>
+            <div><Wifi size={15} /><span>Last data refresh</span><strong>{updated}</strong></div>
             <button onClick={() => setView("live")}>
-              Tournament overview <ChevronDown size={14} />
+              Return to match center <ChevronDown size={14} />
             </button>
           </div>
         </section>
@@ -150,8 +164,11 @@ function App() {
           <span className="brand-mark"><CircleDot size={19} /></span>
           <strong>TOUCHLINE 26</strong>
         </div>
-        <p>Independent analytics experience. Not affiliated with FIFA.</p>
-        <span>Live scores: worldcup26.ir · Models run locally</span>
+        <p>
+          Independent tournament analytics. Not affiliated with FIFA.
+          <button className="intro-reopen" onClick={() => setIntroOpen(true)}>About Touchline 26</button>
+        </p>
+        <span>Match data: worldcup26.ir · Projections calculated in your browser</span>
       </footer>
     </div>
   );

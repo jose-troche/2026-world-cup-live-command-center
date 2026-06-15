@@ -23,10 +23,9 @@ A real-time 2026 World Cup analytics command center designed for Cloudflare's fr
 
 ## Data And Models
 
-Live scores, fixtures, teams, groups, and stadiums come from the free, no-key
-[worldcup26.ir API](https://worldcup26.ir/api-docs), backed by the
-[open-source World Cup 2026 project](https://github.com/rezarahiminia/worldcup2026).
-The Worker normalizes and caches that feed for 30 seconds.
+Live scores, fixtures, status, and venues come from ESPN's public FIFA World Cup scoreboard feed.
+The Worker normalizes that feed, computes current group standings, and caches the response for 15 seconds.
+Bundled team metadata keeps the dashboard usable if third-party metadata is incomplete.
 
 The public feed does not provide live shot locations or provider xG. Touchline 26 therefore labels
 xG, win probability, advancement probability, team ratings, and bracket outcomes as model estimates.

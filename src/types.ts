@@ -18,6 +18,7 @@ export type Match = {
   group: string;
   matchday: number;
   localDate: string;
+  utcDate?: string;
   stadiumId: string;
   status: "live" | "finished" | "scheduled";
   minute: number;
@@ -45,6 +46,7 @@ export type Stadium = {
   id: string;
   name: string;
   city: string;
+  countryCode?: string;
   capacity: number;
 };
 

@@ -28,18 +28,43 @@ type Props = {
 function statusLabel(match: Match) {
   if (match.status === "live") return `${match.minute}' LIVE`;
   if (match.status === "finished") return "FINAL";
-  const [, time = ""] = match.localDate.split(" ");
-  return time;
+  return formatMatchTime(match);
 }
 
-function formatDate(value: string) {
-  const [datePart] = value.split(" ");
+function parseLocalDate(value: string) {
+  const [datePart, timePart = "00:00"] = value.split(" ");
   const [month, day, year] = datePart.split("/");
+  const [hour, minute] = timePart.split(":");
+  return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+}
+
+function getMatchDate(match: Match) {
+  return match.utcDate ? new Date(match.utcDate) : parseLocalDate(match.localDate);
+}
+
+function formatMatchTime(match: Match) {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(getMatchDate(match));
+}
+
+function formatMatchDateTime(match: Match) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
-  }).format(new Date(Number(year), Number(month) - 1, Number(day)));
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(getMatchDate(match));
+}
+
+function formatVenue(stadium?: Stadium) {
+  if (!stadium) return "Venue to be confirmed";
+  const city = stadium.city.split(",")[0].trim();
+  const location = [city, stadium.countryCode].filter(Boolean).join(", ");
+  return location ? `${stadium.name} · ${location}` : stadium.name;
 }
 
 export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }: Props) {
@@ -133,8 +158,8 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
           </div>
 
           <div className="match-meta">
-            <span><Clock3 size={14} /> {formatDate(match.localDate)}</span>
-            <span><MapPin size={14} /> {stadium?.name ?? "Venue to be confirmed"}</span>
+            <span><Clock3 size={14} /> {formatMatchDateTime(match)}</span>
+            <span><MapPin size={14} /> {formatVenue(stadium)}</span>
           </div>
 
           <div className="signal-strip">

@@ -168,7 +168,7 @@ function App() {
           Independent tournament analytics. Not affiliated with FIFA.
           <button className="intro-reopen" onClick={() => setIntroOpen(true)}>About Touchline 26</button>
         </p>
-        <span>Match data: worldcup26.ir · Projections calculated in your browser</span>
+        <span>Match data: ESPN scoreboard · Projections calculated in your browser</span>
       </footer>
     </div>
   );

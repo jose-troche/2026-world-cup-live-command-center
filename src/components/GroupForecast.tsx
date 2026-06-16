@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BarChart3, Info, Sparkles } from "lucide-react";
 import {
   Bar,
@@ -18,9 +18,10 @@ type Props = {
   groups: Group[];
   matches: Match[];
   teams: Team[];
+  selectedGroupName?: string;
 };
 
-export function GroupForecast({ groups, matches, teams }: Props) {
+export function GroupForecast({ groups, matches, teams, selectedGroupName }: Props) {
   const [selectedGroup, setSelectedGroup] = useState(groups[0]?.name ?? "A");
   const probabilities = useMemo(
     () => simulateAdvancement(groups, matches, teams),
@@ -28,6 +29,12 @@ export function GroupForecast({ groups, matches, teams }: Props) {
   );
   const group = groups.find((item) => item.name === selectedGroup) ?? groups[0];
   const teamById = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams]);
+
+  useEffect(() => {
+    if (selectedGroupName && groups.some((item) => item.name === selectedGroupName)) {
+      setSelectedGroup(selectedGroupName);
+    }
+  }, [groups, selectedGroupName]);
 
   if (!group) return <div className="empty-state panel">Loading group standings…</div>;
 

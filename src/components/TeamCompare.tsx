@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeftRight, Gauge, ShieldCheck, Swords, Zap } from "lucide-react";
 import {
   PolarAngleAxis,
@@ -14,14 +14,24 @@ import { Flag } from "./Flag";
 
 type Props = {
   teams: Team[];
+  initialTeamId?: string;
 };
 
-export function TeamCompare({ teams }: Props) {
+export function TeamCompare({ teams, initialTeamId }: Props) {
   const sorted = useMemo(() => [...teams].sort((a, b) => a.name.localeCompare(b.name)), [teams]);
   const [leftId, setLeftId] = useState(sorted.find((team) => team.name === "Brazil")?.id ?? sorted[0]?.id);
   const [rightId, setRightId] = useState(sorted.find((team) => team.name === "France")?.id ?? sorted[1]?.id);
   const left = sorted.find((team) => team.id === leftId) ?? sorted[0];
   const right = sorted.find((team) => team.id === rightId) ?? sorted[1];
+
+  useEffect(() => {
+    if (!initialTeamId || !sorted.some((team) => team.id === initialTeamId)) return;
+    setLeftId(initialTeamId);
+    setRightId((currentRightId) => {
+      if (currentRightId && currentRightId !== initialTeamId) return currentRightId;
+      return sorted.find((team) => team.id !== initialTeamId)?.id ?? currentRightId;
+    });
+  }, [initialTeamId, sorted]);
 
   if (!left || !right) return <div className="empty-state panel">Loading team profiles…</div>;
 

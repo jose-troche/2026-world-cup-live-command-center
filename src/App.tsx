@@ -1,23 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
+  Bell,
   Brackets,
   ChevronDown,
   CircleDot,
   Command,
+  Flame,
   GitCompareArrows,
   Menu,
   RefreshCw,
-  Share2,
+  Sparkles,
   Wifi,
   X,
+  Zap,
 } from "lucide-react";
 import { BracketLab } from "./components/BracketLab";
 import { GroupForecast } from "./components/GroupForecast";
+import { InsightsPage } from "./components/InsightsPage";
 import { IntroExperience } from "./components/IntroExperience";
 import { LiveDashboard } from "./components/LiveDashboard";
+import { NewsPage } from "./components/NewsPage";
+import { PredictionsPage } from "./components/PredictionsPage";
+import { RankingsPage } from "./components/RankingsPage";
 import { TeamCompare } from "./components/TeamCompare";
-import { ViralEngine } from "./components/ViralEngine";
 import { fallbackData } from "./data/fallback";
 import { useTournamentData } from "./hooks/useTournamentData";
 import { saveIntroPreference, shouldHideIntro } from "./lib/introPreference";
@@ -25,14 +31,17 @@ import { buildViralContent, getContentPath, getMatchPath, getTeamPath } from "./
 import type { ContentStory } from "./lib/viral";
 import type { Match, Team } from "./types";
 
-type View = "live" | "groups" | "bracket" | "compare" | "viral";
+type View = "live" | "groups" | "bracket" | "compare" | "insights" | "predictions" | "rankings" | "news";
 
 const navigation: Array<{ id: View; label: string; icon: typeof Command }> = [
   { id: "live", label: "Match center", icon: Command },
   { id: "groups", label: "Advancement", icon: BarChart3 },
   { id: "bracket", label: "Bracket simulator", icon: Brackets },
   { id: "compare", label: "Team comparison", icon: GitCompareArrows },
-  { id: "viral", label: "Viral engine", icon: Share2 },
+  { id: "predictions", label: "Predictions", icon: Zap },
+  { id: "rankings", label: "Rankings", icon: Flame },
+  { id: "insights", label: "Insights", icon: Sparkles },
+  { id: "news", label: "News", icon: Bell },
 ];
 
 function getPathname() {
@@ -43,15 +52,14 @@ function getViewFromPath(pathname: string): View {
   if (pathname.startsWith("/groups")) return "groups";
   if (pathname.startsWith("/bracket")) return "bracket";
   if (pathname.startsWith("/teams")) return "compare";
+  if (pathname.startsWith("/news")) return "news";
+  if (pathname.startsWith("/predictions") || pathname.startsWith("/what-changed")) return "predictions";
   if (
-    pathname.startsWith("/viral") ||
+    pathname.startsWith("/rankings") ||
     pathname.startsWith("/upsets") ||
-    pathname.startsWith("/power-rankings") ||
-    pathname.startsWith("/what-changed") ||
-    pathname.startsWith("/content")
-  ) {
-    return "viral";
-  }
+    pathname.startsWith("/power-rankings")
+  ) return "rankings";
+  if (pathname.startsWith("/insights") || pathname.startsWith("/content")) return "insights";
   return "live";
 }
 
@@ -59,13 +67,21 @@ function getViewPath(view: View) {
   if (view === "groups") return "/groups";
   if (view === "bracket") return "/bracket";
   if (view === "compare") return "/teams";
-  if (view === "viral") return "/viral";
+  if (view === "insights") return "/insights";
+  if (view === "predictions") return "/predictions";
+  if (view === "rankings") return "/rankings";
+  if (view === "news") return "/news";
   return "/";
 }
 
 function getGroupFromPath(pathname: string) {
   const match = /^\/groups\/group-([a-z0-9-]+)$/i.exec(pathname);
   return match ? match[1].toUpperCase() : undefined;
+}
+
+function getWhatChangedMatchId(pathname: string) {
+  const match = /^\/what-changed\/(.+)$/.exec(pathname);
+  return match ? decodeURIComponent(match[1]) : undefined;
 }
 
 function findRouteMatch(pathname: string, matches: Match[]) {
@@ -121,7 +137,9 @@ function getFeaturedMatch(matches: Match[]) {
 }
 
 function App() {
-  const { data, loading, refreshing, refresh } = useTournamentData();
+  const { data, loading, refreshing, refresh, latestGoal, goalHistory } = useTournamentData();
+  const [toastDismissedId, setToastDismissedId] = useState<string | null>(null);
+  const showToast = latestGoal !== null && toastDismissedId !== latestGoal.detectedAt;
   const [pathname, setPathname] = useState(getPathname);
   const [view, setView] = useState<View>(() => getViewFromPath(getPathname()));
   const [selectedMatchId, setSelectedMatchId] = useState<string>();
@@ -150,6 +168,7 @@ function App() {
     [fallbackViralContent.contentStories, pathname, viralContent.contentStories],
   );
   const routeGroup = getGroupFromPath(pathname);
+  const routeWhatChangedMatchId = getWhatChangedMatchId(pathname);
   const selectedMatch =
     routeMatch ?? data.matches.find((match) => match.id === selectedMatchId) ?? featuredMatch;
 
@@ -178,7 +197,10 @@ function App() {
       routeStory ? routeStory.title :
       routeTeam ? `${routeTeam.name} World Cup probabilities` :
       routeGroup ? `World Cup Group ${routeGroup} probabilities` :
-      view === "viral" ? "Viral content engine" :
+      view === "insights" ? "Stories and content hub" :
+      view === "predictions" ? "Match predictions and probability swings" :
+      view === "rankings" ? "Power rankings and upsets" :
+      view === "news" ? "Goal-by-goal impact feed" :
       view === "groups" ? "Group advancement probabilities" :
       view === "bracket" ? "World Cup bracket simulator" :
       view === "compare" ? "Team comparison model" :
@@ -195,6 +217,18 @@ function App() {
     setMeta("og:title", document.title, true);
     setMeta("og:description", description, true);
     setMeta("og:type", "website", true);
+    const origin = typeof window === "undefined" ? "" : window.location.origin;
+    const ogImage =
+      routeMatch ? `${origin}/api/cards/match/${encodeURIComponent(routeMatch.id)}.svg` :
+      routeStory ? routeStory.cardUrl :
+      routeWhatChangedMatchId ? `${origin}/api/cards/what-changed/${encodeURIComponent(routeWhatChangedMatchId)}.svg` :
+      pathname === "/upsets" ? `${origin}/api/cards/upsets.svg` :
+      `${origin}/api/cards/power-rankings.svg`;
+    setMeta("og:image", ogImage, true);
+    setMeta("og:image:width", "1200", true);
+    setMeta("og:image:height", "630", true);
+    setMeta("twitter:card", "summary_large_image");
+    setMeta("twitter:image", ogImage);
     setJsonLd({
       "@context": "https://schema.org",
       "@type": routeMatch ? "SportsEvent" : routeTeam ? "SportsTeam" : routeStory ? "Article" : "WebPage",
@@ -205,7 +239,7 @@ function App() {
       competitor: routeMatch ? [routeMatch.homeName, routeMatch.awayName] : undefined,
       url: typeof window === "undefined" ? undefined : window.location.href,
     });
-  }, [routeGroup, routeMatch, routeStory, routeTeam, view]);
+  }, [pathname, routeGroup, routeMatch, routeStory, routeTeam, routeWhatChangedMatchId, view]);
 
   const updated = new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
@@ -254,6 +288,9 @@ function App() {
             >
               <item.icon size={16} />
               {item.label}
+              {item.id === "news" && latestGoal && (
+                <span className="goal-nav-badge">GOAL</span>
+              )}
             </button>
           ))}
         </nav>
@@ -269,6 +306,30 @@ function App() {
         </div>
       </header>
 
+      {showToast && latestGoal && (
+        <div className="goal-toast">
+          <Zap size={15} className="goal-toast-zap" />
+          <span className="goal-toast-text">
+            <strong>GOAL!</strong>{" "}
+            {latestGoal.homeName} {latestGoal.scoreAfter.home}–{latestGoal.scoreAfter.away} {latestGoal.awayName}{" "}
+            ({latestGoal.minute}')
+          </span>
+          <button
+            className="goal-toast-cta"
+            onClick={() => { navigate("news"); setToastDismissedId(latestGoal.detectedAt); }}
+          >
+            View analysis
+          </button>
+          <button
+            className="goal-toast-dismiss"
+            onClick={() => setToastDismissedId(latestGoal.detectedAt)}
+            aria-label="Dismiss"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       <main>
         <section className="page-masthead">
           <div>
@@ -278,7 +339,10 @@ function App() {
               {view === "groups" && <>See the table<br /><em>before it settles.</em></>}
               {view === "bracket" && <>Trace every route<br /><em>to the title.</em></>}
               {view === "compare" && <>Measure how the<br /><em>contenders match up.</em></>}
-              {view === "viral" && <>Turn match data<br /><em>into shareable moments.</em></>}
+              {view === "insights" && <>Stories and posts<br /><em>from live data.</em></>}
+              {view === "predictions" && <>Win probabilities<br /><em>before the whistle.</em></>}
+              {view === "rankings" && <>Power rankings<br /><em>and upset scores.</em></>}
+              {view === "news" && <>Every goal,<br /><em>ready to share.</em></>}
             </h1>
           </div>
           <div className="masthead-meta">
@@ -314,7 +378,18 @@ function App() {
         )}
         {view === "bracket" && <BracketLab teams={data.teams} />}
         {view === "compare" && <TeamCompare teams={data.teams} initialTeamId={routeTeam?.id} />}
-        {view === "viral" && <ViralEngine data={data} />}
+        {view === "insights" && (
+          <InsightsPage data={data} routeStory={routeStory} />
+        )}
+        {view === "predictions" && (
+          <PredictionsPage data={data} routeWhatChangedMatchId={routeWhatChangedMatchId} />
+        )}
+        {view === "rankings" && (
+          <RankingsPage data={data} />
+        )}
+        {view === "news" && (
+          <NewsPage goalHistory={goalHistory} data={data} />
+        )}
       </main>
 
       <footer>

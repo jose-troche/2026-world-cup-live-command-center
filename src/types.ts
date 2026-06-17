@@ -75,3 +75,22 @@ export type TeamMetrics = {
   form: number;
   rating: number;
 };
+
+export type GoalEvent = {
+  matchId: string;
+  homeName: string;
+  awayName: string;
+  scorerTeam: "home" | "away";
+  scoreBefore: { home: number; away: number };
+  scoreAfter: { home: number; away: number };
+  minute: number;
+  detectedAt: string;
+};
+
+export type GoalWithImpact = {
+  event: GoalEvent;
+  advancementBefore: Map<string, number>;
+  advancementAfter: Map<string, number>;
+  championshipBefore: Map<string, number>;
+  championshipAfter: Map<string, number>;
+};

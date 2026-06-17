@@ -1,4 +1,4 @@
-import type { Group, Match, Standing, Team, TournamentData, WinProbability } from "../types";
+import type { GoalEvent, Group, Match, Standing, Team, TournamentData, WinProbability } from "../types";
 import { expectedGoals, getRating, winProbability } from "./analytics";
 
 export type ShareLink = {
@@ -83,6 +83,35 @@ export type ViralContent = {
   contentStories: ContentStory[];
   socialPosts: SocialPost[];
   seoPages: Array<{ title: string; path: string; description: string }>;
+};
+
+export type PlatformPost = {
+  platform: "x" | "bluesky" | "whatsapp" | "instagram" | "facebook" | "telegram";
+  text: string;
+  charCount: number;
+  charLimit: number;
+  intentUrl: string | null;
+  threads?: string[];
+};
+
+export type ChampionshipSwing = {
+  teamId: string;
+  teamName: string;
+  teamCode: string;
+  advancementBefore: number;
+  advancementAfter: number;
+  advancementDelta: number;
+  championshipBefore: number;
+  championshipAfter: number;
+  championshipDelta: number;
+};
+
+export type GoalImpactReport = {
+  event: GoalEvent;
+  swings: ChampionshipSwing[];
+  platformPosts: PlatformPost[];
+  telegraphUrl: string | null;
+  generatedAt: string;
 };
 
 type StandingSeed = Standing & { group: string };
@@ -582,6 +611,122 @@ function buildSeoPages(data: Pick<TournamentData, "teams" | "groups" | "matches"
     description: story.summary,
   }));
   return [...matchPages, ...teamPages, ...groupPages, ...contentPages];
+}
+
+function formatPlatformPost(
+  text: string,
+  url: string,
+  platform: PlatformPost["platform"],
+): PlatformPost {
+  const limits: Record<PlatformPost["platform"], number> = {
+    x: 280,
+    bluesky: 300,
+    whatsapp: 0,
+    instagram: 0,
+    facebook: 0,
+    telegram: 0,
+  };
+  const charLimit = limits[platform];
+
+  const intentUrls: Record<PlatformPost["platform"], string | null> = {
+    x: `https://twitter.com/intent/tweet?text=${encodeURIComponent(`${text}\n${url}`)}`,
+    bluesky: `https://bsky.app/intent/compose?text=${encodeURIComponent(`${text}\n${url}`)}`,
+    whatsapp: `https://wa.me/?text=${encodeURIComponent(`${text}\n${url}`)}`,
+    instagram: null,
+    facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`,
+    telegram: `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`,
+  };
+
+  if (platform === "x" && charLimit > 0) {
+    const full = `${text}\n${url}`;
+    if (full.length <= charLimit) {
+      return { platform, text: full, charCount: full.length, charLimit, intentUrl: intentUrls.x };
+    }
+    // Split into 2 threads: score line + odds line, then url + hashtags
+    const lines = text.split("\n");
+    const tweet1 = lines.slice(0, 2).join("\n");
+    const tweet2 = `${lines.slice(2).join("\n")}\n${url}`.trim();
+    return {
+      platform,
+      text: tweet1,
+      charCount: tweet1.length,
+      charLimit,
+      intentUrl: `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweet1)}`,
+      threads: [tweet1, tweet2],
+    };
+  }
+
+  if (platform === "instagram") {
+    const instagramText = `${text}\n.\n#WorldCup2026 #Touchline26 #Soccer #Football #WC2026`;
+    return {
+      platform,
+      text: instagramText,
+      charCount: instagramText.length,
+      charLimit: 0,
+      intentUrl: null,
+    };
+  }
+
+  const fullText = platform === "facebook" ? text : `${text}\n${url}`;
+  return {
+    platform,
+    text: fullText,
+    charCount: fullText.length,
+    charLimit,
+    intentUrl: intentUrls[platform],
+  };
+}
+
+export function buildGoalImpactContent(
+  event: GoalEvent,
+  advancementBefore: Map<string, number>,
+  advancementAfter: Map<string, number>,
+  championshipBefore: Map<string, number>,
+  championshipAfter: Map<string, number>,
+  teams: Team[],
+  origin = DEFAULT_ORIGIN,
+): GoalImpactReport {
+  const teamByName = new Map(teams.map((team) => [team.name, team]));
+  const homeTeam = teamByName.get(event.homeName);
+  const awayTeam = teamByName.get(event.awayName);
+
+  const swings: ChampionshipSwing[] = [homeTeam, awayTeam]
+    .filter((team): team is Team => Boolean(team))
+    .map((team) => ({
+      teamId: team.id,
+      teamName: team.name,
+      teamCode: team.code,
+      advancementBefore: advancementBefore.get(team.id) ?? 0,
+      advancementAfter: advancementAfter.get(team.id) ?? 0,
+      advancementDelta: (advancementAfter.get(team.id) ?? 0) - (advancementBefore.get(team.id) ?? 0),
+      championshipBefore: championshipBefore.get(team.id) ?? 0,
+      championshipAfter: championshipAfter.get(team.id) ?? 0,
+      championshipDelta: (championshipAfter.get(team.id) ?? 0) - (championshipBefore.get(team.id) ?? 0),
+    }));
+
+  const scoreLine = `GOAL! ${event.homeName} ${event.scoreAfter.home}-${event.scoreAfter.away} ${event.awayName} (${event.minute}')`;
+  const homeSwing = swings.find((s) => s.teamName === event.homeName);
+  const awaySwing = swings.find((s) => s.teamName === event.awayName);
+
+  const oddsLine = [
+    homeSwing && `${event.homeName}: title ${homeSwing.championshipBefore}%→${homeSwing.championshipAfter}% (${homeSwing.championshipDelta >= 0 ? "+" : ""}${homeSwing.championshipDelta}%)`,
+    awaySwing && `${event.awayName}: title ${awaySwing.championshipBefore}%→${awaySwing.championshipAfter}% (${awaySwing.championshipDelta >= 0 ? "+" : ""}${awaySwing.championshipDelta}%)`,
+  ].filter(Boolean).join(" | ");
+
+  const hashtags = "#WorldCup2026 #Touchline26";
+  const coreText = `${scoreLine}\n${oddsLine}\n${hashtags}`;
+  const pageUrl = absoluteUrl(origin, `/matches/${slugify(`${event.homeName}-${event.awayName}`)}`)
+
+  const platforms: PlatformPost["platform"][] = ["x", "bluesky", "whatsapp", "instagram", "facebook", "telegram"];
+  const platformPosts = platforms.map((platform) => formatPlatformPost(coreText, pageUrl, platform));
+
+  return {
+    event,
+    swings,
+    platformPosts,
+    telegraphUrl: null,
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 export function buildViralContent(data: TournamentData, origin = DEFAULT_ORIGIN): ViralContent {

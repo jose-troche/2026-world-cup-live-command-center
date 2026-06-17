@@ -1,6 +1,6 @@
 import { fallbackData, fallbackTeams } from "../src/data/fallback";
-import { buildMatchPrediction, buildViralContent, buildWhatChanged } from "../src/lib/viral";
-import type { Group, Match, Stadium, Team, TournamentData } from "../src/types";
+import { buildGoalImpactContent, buildMatchPrediction, buildViralContent, buildWhatChanged } from "../src/lib/viral";
+import type { GoalEvent, Group, Match, Stadium, Team, TournamentData } from "../src/types";
 
 const ESPN_SCOREBOARD_URL =
   "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=20260611-20260719&limit=200";
@@ -775,6 +775,72 @@ export default {
           ]),
         ),
       );
+    }
+
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+        },
+      });
+    }
+
+    if (url.pathname === "/api/goal-impact" && request.method === "POST") {
+      type GoalImpactBody = {
+        event: GoalEvent;
+        advancementBefore: Record<string, number>;
+        advancementAfter: Record<string, number>;
+        championshipBefore: Record<string, number>;
+        championshipAfter: Record<string, number>;
+      };
+      const body = await request.json() as GoalImpactBody;
+      const tournament = await getTournamentOrFallback();
+      const report = buildGoalImpactContent(
+        body.event,
+        new Map(Object.entries(body.advancementBefore)),
+        new Map(Object.entries(body.advancementAfter)),
+        new Map(Object.entries(body.championshipBefore)),
+        new Map(Object.entries(body.championshipAfter)),
+        tournament.teams,
+        url.origin,
+      );
+      return json(report, 200, "no-store");
+    }
+
+    if (url.pathname === "/api/telegraph/publish" && request.method === "POST") {
+      type TelegraphPublishBody = {
+        title: string;
+        authorName?: string;
+        content: unknown[];
+      };
+      const body = await request.json() as TelegraphPublishBody;
+      const accountRes = await fetch(
+        `https://api.telegra.ph/createAccount?short_name=Touchline26&author_name=${encodeURIComponent(body.authorName ?? "Touchline 26")}&author_url=${encodeURIComponent("https://touchline26.com")}`,
+      );
+      const account = await accountRes.json() as { ok: boolean; result?: { access_token: string } };
+      if (!account.ok || !account.result?.access_token) {
+        return json({ error: "Failed to create Telegraph account" }, 502, "no-store");
+      }
+      const pageRes = await fetch("https://api.telegra.ph/createPage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          access_token: account.result.access_token,
+          title: body.title,
+          author_name: body.authorName ?? "Touchline 26",
+          author_url: "https://touchline26.com",
+          content: body.content,
+          return_content: false,
+        }),
+      });
+      const page = await pageRes.json() as { ok: boolean; result?: { url: string } };
+      if (!page.ok || !page.result?.url) {
+        return json({ error: "Failed to publish Telegraph article" }, 502, "no-store");
+      }
+      return json({ url: page.result.url }, 200, "no-store");
     }
 
     return json({ error: "The requested endpoint was not found." }, 404, "no-store");

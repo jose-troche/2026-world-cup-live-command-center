@@ -243,3 +243,114 @@ export function simulateKnockout(teamA: Team, teamB: Team) {
   const probabilityA = 1 / (1 + Math.exp(-difference / 7));
   return Math.random() < probabilityA ? teamA : teamB;
 }
+
+export function simulateChampionship(
+  groups: Group[],
+  matches: Match[],
+  teams: Team[],
+  iterations = 700,
+): Map<string, number> {
+  const teamById = new Map(teams.map((team) => [team.id, team]));
+  const counts = new Map<string, number>();
+
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    const allThird: SimulationRow[] = [];
+    const qualifiers: Team[] = [];
+
+    for (const group of groups) {
+      const table = new Map<string, SimulationRow>();
+      group.standings.forEach((standing) => {
+        table.set(standing.teamId, {
+          id: standing.teamId,
+          points: standing.points,
+          goalsFor: standing.goalsFor,
+          goalsAgainst: standing.goalsAgainst,
+        });
+      });
+
+      matches
+        .filter(
+          (match) =>
+            match.group === group.name &&
+            match.type === "group" &&
+            match.status !== "finished" &&
+            table.has(match.homeId) &&
+            table.has(match.awayId),
+        )
+        .forEach((match) => {
+          const xg = expectedGoals(match.homeName, match.awayName);
+          const homeGoals = sampleGoals(xg.home);
+          const awayGoals = sampleGoals(xg.away);
+          const home = table.get(match.homeId)!;
+          const away = table.get(match.awayId)!;
+          home.goalsFor += homeGoals;
+          home.goalsAgainst += awayGoals;
+          away.goalsFor += awayGoals;
+          away.goalsAgainst += homeGoals;
+          if (homeGoals > awayGoals) home.points += 3;
+          else if (awayGoals > homeGoals) away.points += 3;
+          else {
+            home.points += 1;
+            away.points += 1;
+          }
+        });
+
+      const ranked = [...table.values()].sort((a, b) => {
+        const nameA = teamById.get(a.id)?.name ?? a.id;
+        const nameB = teamById.get(b.id)?.name ?? b.id;
+        return (
+          b.points - a.points ||
+          b.goalsFor - b.goalsAgainst - (a.goalsFor - a.goalsAgainst) ||
+          b.goalsFor - a.goalsFor ||
+          getRating(nameB) - getRating(nameA)
+        );
+      });
+
+      ranked.slice(0, 2).forEach((row) => {
+        const team = teamById.get(row.id);
+        if (team) qualifiers.push(team);
+      });
+      if (ranked[2]) allThird.push(ranked[2]);
+    }
+
+    allThird
+      .sort((a, b) => {
+        const nameA = teamById.get(a.id)?.name ?? a.id;
+        const nameB = teamById.get(b.id)?.name ?? b.id;
+        return (
+          b.points - a.points ||
+          b.goalsFor - b.goalsAgainst - (a.goalsFor - a.goalsAgainst) ||
+          b.goalsFor - a.goalsFor ||
+          getRating(nameB) - getRating(nameA)
+        );
+      })
+      .slice(0, 8)
+      .forEach((row) => {
+        const team = teamById.get(row.id);
+        if (team) qualifiers.push(team);
+      });
+
+    // Seed by rating: strongest team is seed 1, plays weakest seed in R32
+    qualifiers.sort((a, b) => getRating(b.name) - getRating(a.name));
+
+    // Simulate 5 knockout rounds (R32 → R16 → QF → SF → Final)
+    // Seed 1 plays seed 32, seed 2 plays seed 31, etc.
+    const seeded = qualifiers.slice(0, 32);
+    let remaining = seeded;
+    while (remaining.length > 1) {
+      const nextRound: Team[] = [];
+      // Standard bracket: pair from opposite ends (1v last, 2v second-to-last, ...)
+      for (let left = 0, right = remaining.length - 1; left < right; left += 1, right -= 1) {
+        nextRound.push(simulateKnockout(remaining[left], remaining[right]));
+      }
+      remaining = nextRound;
+    }
+
+    const champion = remaining[0];
+    if (champion) counts.set(champion.id, (counts.get(champion.id) ?? 0) + 1);
+  }
+
+  return new Map(
+    teams.map((team) => [team.id, Math.round(((counts.get(team.id) ?? 0) / iterations) * 100)]),
+  );
+}

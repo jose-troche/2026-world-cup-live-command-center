@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
-  Bell,
+  Volleyball,
   Brackets,
   ChevronDown,
   CircleDot,
   Command,
-  Flame,
   GitCompareArrows,
   Menu,
   RefreshCw,
@@ -20,9 +19,7 @@ import { GroupForecast } from "./components/GroupForecast";
 import { InsightsPage } from "./components/InsightsPage";
 import { IntroExperience } from "./components/IntroExperience";
 import { LiveDashboard } from "./components/LiveDashboard";
-import { NewsPage } from "./components/NewsPage";
-import { PredictionsPage } from "./components/PredictionsPage";
-import { RankingsPage } from "./components/RankingsPage";
+import { GoalImpactPage } from "./components/GoalImpactPage";
 import { TeamCompare } from "./components/TeamCompare";
 import { fallbackData } from "./data/fallback";
 import { useTournamentData } from "./hooks/useTournamentData";
@@ -31,17 +28,15 @@ import { buildViralContent, getContentPath, getMatchPath, getTeamPath } from "./
 import type { ContentStory } from "./lib/viral";
 import type { Match, Team } from "./types";
 
-type View = "live" | "groups" | "bracket" | "compare" | "insights" | "predictions" | "rankings" | "news";
+type View = "live" | "groups" | "bracket" | "compare" | "insights" | "goal-impact";
 
 const navigation: Array<{ id: View; label: string; icon: typeof Command }> = [
   { id: "live", label: "Match center", icon: Command },
   { id: "groups", label: "Advancement", icon: BarChart3 },
-  { id: "bracket", label: "Bracket simulator", icon: Brackets },
   { id: "compare", label: "Team comparison", icon: GitCompareArrows },
-  { id: "predictions", label: "Predictions", icon: Zap },
-  { id: "rankings", label: "Rankings", icon: Flame },
+  { id: "bracket", label: "Bracket simulator", icon: Brackets },
   { id: "insights", label: "Insights", icon: Sparkles },
-  { id: "news", label: "News", icon: Bell },
+  { id: "goal-impact", label: "Goal Impact", icon: Volleyball },
 ];
 
 function getPathname() {
@@ -52,13 +47,7 @@ function getViewFromPath(pathname: string): View {
   if (pathname.startsWith("/groups")) return "groups";
   if (pathname.startsWith("/bracket")) return "bracket";
   if (pathname.startsWith("/teams")) return "compare";
-  if (pathname.startsWith("/news")) return "news";
-  if (pathname.startsWith("/predictions") || pathname.startsWith("/what-changed")) return "predictions";
-  if (
-    pathname.startsWith("/rankings") ||
-    pathname.startsWith("/upsets") ||
-    pathname.startsWith("/power-rankings")
-  ) return "rankings";
+  if (pathname.startsWith("/goal-impact")) return "goal-impact";
   if (pathname.startsWith("/insights") || pathname.startsWith("/content")) return "insights";
   return "live";
 }
@@ -68,20 +57,13 @@ function getViewPath(view: View) {
   if (view === "bracket") return "/bracket";
   if (view === "compare") return "/teams";
   if (view === "insights") return "/insights";
-  if (view === "predictions") return "/predictions";
-  if (view === "rankings") return "/rankings";
-  if (view === "news") return "/news";
+  if (view === "goal-impact") return "/goal-impact";
   return "/";
 }
 
 function getGroupFromPath(pathname: string) {
   const match = /^\/groups\/group-([a-z0-9-]+)$/i.exec(pathname);
   return match ? match[1].toUpperCase() : undefined;
-}
-
-function getWhatChangedMatchId(pathname: string) {
-  const match = /^\/what-changed\/(.+)$/.exec(pathname);
-  return match ? decodeURIComponent(match[1]) : undefined;
 }
 
 function findRouteMatch(pathname: string, matches: Match[]) {
@@ -168,7 +150,6 @@ function App() {
     [fallbackViralContent.contentStories, pathname, viralContent.contentStories],
   );
   const routeGroup = getGroupFromPath(pathname);
-  const routeWhatChangedMatchId = getWhatChangedMatchId(pathname);
   const selectedMatch =
     routeMatch ?? data.matches.find((match) => match.id === selectedMatchId) ?? featuredMatch;
 
@@ -198,9 +179,7 @@ function App() {
       routeTeam ? `${routeTeam.name} World Cup probabilities` :
       routeGroup ? `World Cup Group ${routeGroup} probabilities` :
       view === "insights" ? "Stories and content hub" :
-      view === "predictions" ? "Match predictions and probability swings" :
-      view === "rankings" ? "Power rankings and upsets" :
-      view === "news" ? "Goal-by-goal impact feed" :
+      view === "goal-impact" ? "Goal impact feed" :
       view === "groups" ? "Group advancement probabilities" :
       view === "bracket" ? "World Cup bracket simulator" :
       view === "compare" ? "Team comparison model" :
@@ -221,8 +200,6 @@ function App() {
     const ogImage =
       routeMatch ? `${origin}/api/cards/match/${encodeURIComponent(routeMatch.id)}.svg` :
       routeStory ? routeStory.cardUrl :
-      routeWhatChangedMatchId ? `${origin}/api/cards/what-changed/${encodeURIComponent(routeWhatChangedMatchId)}.svg` :
-      pathname === "/upsets" ? `${origin}/api/cards/upsets.svg` :
       `${origin}/api/cards/power-rankings.svg`;
     setMeta("og:image", ogImage, true);
     setMeta("og:image:width", "1200", true);
@@ -239,7 +216,7 @@ function App() {
       competitor: routeMatch ? [routeMatch.homeName, routeMatch.awayName] : undefined,
       url: typeof window === "undefined" ? undefined : window.location.href,
     });
-  }, [pathname, routeGroup, routeMatch, routeStory, routeTeam, routeWhatChangedMatchId, view]);
+  }, [pathname, routeGroup, routeMatch, routeStory, routeTeam, view]);
 
   const updated = new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
@@ -288,7 +265,7 @@ function App() {
             >
               <item.icon size={16} />
               {item.label}
-              {item.id === "news" && latestGoal && (
+              {item.id === "goal-impact" && latestGoal && (
                 <span className="goal-nav-badge">GOAL</span>
               )}
             </button>
@@ -316,7 +293,7 @@ function App() {
           </span>
           <button
             className="goal-toast-cta"
-            onClick={() => { navigate("news"); setToastDismissedId(latestGoal.detectedAt); }}
+            onClick={() => { navigate("goal-impact"); setToastDismissedId(latestGoal.detectedAt); }}
           >
             View analysis
           </button>
@@ -340,9 +317,7 @@ function App() {
               {view === "bracket" && <>Trace every route<br /><em>to the title.</em></>}
               {view === "compare" && <>Measure how the<br /><em>contenders match up.</em></>}
               {view === "insights" && <>Stories and posts<br /><em>from live data.</em></>}
-              {view === "predictions" && <>Win probabilities<br /><em>before the whistle.</em></>}
-              {view === "rankings" && <>Power rankings<br /><em>and upset scores.</em></>}
-              {view === "news" && <>Every goal,<br /><em>ready to share.</em></>}
+              {view === "goal-impact" && <>Every goal,<br /><em>ready to share.</em></>}
             </h1>
           </div>
           <div className="masthead-meta">
@@ -373,22 +348,22 @@ function App() {
             groups={data.groups}
             matches={data.matches}
             teams={data.teams}
-            selectedGroupName={routeGroup}
+            selectedGroupName={routeGroup ?? featuredMatch?.group}
           />
         )}
         {view === "bracket" && <BracketLab teams={data.teams} />}
-        {view === "compare" && <TeamCompare teams={data.teams} initialTeamId={routeTeam?.id} />}
+        {view === "compare" && (
+          <TeamCompare
+            teams={data.teams}
+            initialTeamId={routeTeam?.id ?? featuredMatch?.homeId}
+            initialRightTeamId={routeTeam ? undefined : featuredMatch?.awayId}
+          />
+        )}
         {view === "insights" && (
           <InsightsPage data={data} routeStory={routeStory} />
         )}
-        {view === "predictions" && (
-          <PredictionsPage data={data} routeWhatChangedMatchId={routeWhatChangedMatchId} />
-        )}
-        {view === "rankings" && (
-          <RankingsPage data={data} />
-        )}
-        {view === "news" && (
-          <NewsPage goalHistory={goalHistory} data={data} />
+        {view === "goal-impact" && (
+          <GoalImpactPage goalHistory={goalHistory} data={data} />
         )}
       </main>
 

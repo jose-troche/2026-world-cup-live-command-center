@@ -24,8 +24,9 @@ describe("viral content engine", () => {
     expect(prediction.cardUrl).toBe("https://example.com/api/cards/match/14.svg");
     expect(prediction.shareLinks.map((link) => link.label)).toEqual([
       "X",
-      "Facebook",
-      "WhatsApp",
+      "Bluesky",
+      "Reddit",
+      "LinkedIn",
       "Copy",
     ]);
   });
@@ -64,7 +65,6 @@ describe("viral content engine", () => {
     const changed = buildWhatChanged(fallbackData, "https://example.com");
 
     expect(changed.length).toBeGreaterThan(0);
-    expect(changed[0].cardUrl).toContain("/api/cards/what-changed/");
     expect(changed.some((item) => item.change !== 0)).toBe(true);
   });
 

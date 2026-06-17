@@ -1,10 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fallbackData } from "../data/fallback";
 import { simulateAdvancement, simulateChampionship } from "../lib/analytics";
-import type { GoalEvent, GoalWithImpact, Match, TournamentData } from "../types";
+import type { GoalEvent, GoalWithImpact, Match, SerializedGoalWithImpact, TournamentData } from "../types";
 
 const POLL_INTERVAL = 45_000;
 const MAX_GOAL_HISTORY = 10;
+
+function deserializeHistory(raw: SerializedGoalWithImpact[]): GoalWithImpact[] {
+  return raw.map((item) => ({
+    event: item.event,
+    advancementBefore: new Map(item.advancementBefore),
+    advancementAfter: new Map(item.advancementAfter),
+    championshipBefore: new Map(item.championshipBefore),
+    championshipAfter: new Map(item.championshipAfter),
+  }));
+}
+
+function serializeItems(items: GoalWithImpact[]): SerializedGoalWithImpact[] {
+  return items.map((item) => ({
+    event: item.event,
+    advancementBefore: [...item.advancementBefore],
+    advancementAfter: [...item.advancementAfter],
+    championshipBefore: [...item.championshipBefore],
+    championshipAfter: [...item.championshipAfter],
+  }));
+}
 
 export function getTournamentAvailabilityMessage(hasLiveSnapshot: boolean) {
   return hasLiveSnapshot
@@ -67,6 +87,30 @@ async function fireNotification(event: GoalEvent) {
   );
 }
 
+async function fetchGoalHistory(): Promise<GoalWithImpact[]> {
+  try {
+    const res = await fetch("/api/goals", { headers: { Accept: "application/json" } });
+    if (!res.ok) return [];
+    return deserializeHistory((await res.json()) as SerializedGoalWithImpact[]);
+  } catch {
+    return [];
+  }
+}
+
+async function persistGoals(newItems: GoalWithImpact[]): Promise<GoalWithImpact[]> {
+  try {
+    const res = await fetch("/api/goals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(serializeItems(newItems)),
+    });
+    if (!res.ok) return newItems;
+    return deserializeHistory((await res.json()) as SerializedGoalWithImpact[]);
+  } catch {
+    return newItems;
+  }
+}
+
 export function useTournamentData() {
   const [data, setData] = useState<TournamentData>(fallbackData);
   const [loading, setLoading] = useState(true);
@@ -78,6 +122,10 @@ export function useTournamentData() {
   const prevAdvancementRef = useRef<Map<string, number>>(new Map());
   const prevChampionshipRef = useRef<Map<string, number>>(new Map());
   const isFirstPollRef = useRef(true);
+
+  useEffect(() => {
+    fetchGoalHistory().then(setGoalHistory).catch(() => undefined);
+  }, []);
 
   const refresh = useCallback(async (background = false) => {
     if (background) setRefreshing(true);
@@ -104,7 +152,8 @@ export function useTournamentData() {
           championshipBefore: champBefore,
           championshipAfter: new Map(currentChamp),
         }));
-        setGoalHistory((prev) => [...newItems.reverse(), ...prev].slice(0, MAX_GOAL_HISTORY));
+        const persisted = await persistGoals(newItems.reverse());
+        setGoalHistory(persisted.slice(0, MAX_GOAL_HISTORY));
         setLatestGoal(goals[goals.length - 1]);
         for (const goal of goals) {
           void fireNotification(goal);

@@ -19,6 +19,7 @@ import {
   type GroupRole,
   type GroupSelections,
 } from "../lib/bracket";
+import { SHARE_HASHTAGS } from "../lib/viral";
 import type { Team } from "../types";
 import { Flag } from "./Flag";
 
@@ -371,22 +372,29 @@ export function BracketLab({ teams }: Props) {
               <Flag team={championTeam} size="lg" />
               <strong>{championTeam.name}</strong>
               <span>Winner of this scenario</span>
-              <button
-                className="share-btn"
-                onClick={() => {
+              <div className="insight-share-row">
+                {(() => {
                   const url = window.location.href;
                   const title = `My 2026 World Cup bracket: ${championTeam.name} wins — Touchline 26`;
-                  if (navigator.share) {
-                    navigator.share({ title, url }).catch(() => undefined);
-                  } else {
-                    navigator.clipboard.writeText(url).catch(() => undefined);
-                    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${title} ${url}`)}`);
-                  }
-                }}
-                aria-label="Share my bracket"
-              >
-                <Share2 size={14} /> Share my bracket
-              </button>
+                  const tagged = `${title} ${SHARE_HASHTAGS}`;
+                  return (
+                    <>
+                      <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${tagged}\n${url}`)}`} target="_blank" rel="noreferrer" className="share-pill">
+                        <Share2 size={13} /> X
+                      </a>
+                      <a href={`https://bsky.app/intent/compose?text=${encodeURIComponent(`${tagged}\n${url}`)}`} target="_blank" rel="noreferrer" className="share-pill">
+                        <Share2 size={13} /> Bluesky
+                      </a>
+                      <a href={`https://www.reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`} target="_blank" rel="noreferrer" className="share-pill">
+                        <Share2 size={13} /> Reddit
+                      </a>
+                      <a href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`} target="_blank" rel="noreferrer" className="share-pill">
+                        <Share2 size={13} /> LinkedIn
+                      </a>
+                    </>
+                  );
+                })()}
+              </div>
             </>
           ) : (
             <>

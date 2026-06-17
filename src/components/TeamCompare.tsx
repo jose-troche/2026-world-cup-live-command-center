@@ -15,9 +15,10 @@ import { Flag } from "./Flag";
 type Props = {
   teams: Team[];
   initialTeamId?: string;
+  initialRightTeamId?: string;
 };
 
-export function TeamCompare({ teams, initialTeamId }: Props) {
+export function TeamCompare({ teams, initialTeamId, initialRightTeamId }: Props) {
   const sorted = useMemo(() => [...teams].sort((a, b) => a.name.localeCompare(b.name)), [teams]);
   const [leftId, setLeftId] = useState(sorted.find((team) => team.name === "Brazil")?.id ?? sorted[0]?.id);
   const [rightId, setRightId] = useState(sorted.find((team) => team.name === "France")?.id ?? sorted[1]?.id);
@@ -25,13 +26,21 @@ export function TeamCompare({ teams, initialTeamId }: Props) {
   const right = sorted.find((team) => team.id === rightId) ?? sorted[1];
 
   useEffect(() => {
-    if (!initialTeamId || !sorted.some((team) => team.id === initialTeamId)) return;
-    setLeftId(initialTeamId);
-    setRightId((currentRightId) => {
-      if (currentRightId && currentRightId !== initialTeamId) return currentRightId;
-      return sorted.find((team) => team.id !== initialTeamId)?.id ?? currentRightId;
-    });
-  }, [initialTeamId, sorted]);
+    const leftTeam = sorted.find((team) => team.id === initialTeamId);
+    if (!leftTeam) return;
+    setLeftId(leftTeam.id);
+    const rightTeam = initialRightTeamId
+      ? sorted.find((team) => team.id === initialRightTeamId && team.id !== leftTeam.id)
+      : null;
+    if (rightTeam) {
+      setRightId(rightTeam.id);
+    } else {
+      setRightId((currentRightId) => {
+        if (currentRightId && currentRightId !== leftTeam.id) return currentRightId;
+        return sorted.find((team) => team.id !== leftTeam.id)?.id ?? currentRightId;
+      });
+    }
+  }, [initialTeamId, initialRightTeamId, sorted]);
 
   if (!left || !right) return <div className="empty-state panel">Loading team profiles…</div>;
 

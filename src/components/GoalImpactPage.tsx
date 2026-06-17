@@ -9,7 +9,8 @@ type PlatformId = PlatformPost["platform"];
 const PLATFORM_LABELS: Record<PlatformId, string> = {
   x: "X",
   bluesky: "Bluesky",
-  whatsapp: "WhatsApp",
+  reddit: "Reddit",
+  linkedin: "LinkedIn",
 };
 
 function signedPercent(value: number) {
@@ -19,7 +20,7 @@ function signedPercent(value: number) {
 function PlatformTabs({ report }: { report: GoalImpactReport }) {
   const [activeTab, setActiveTab] = useState<PlatformId>("x");
   const [copied, setCopied] = useState(false);
-  const platforms: PlatformId[] = ["x", "bluesky", "whatsapp"];
+  const platforms: PlatformId[] = ["x", "bluesky", "reddit", "linkedin"];
   const post = report.platformPosts.find((p) => p.platform === activeTab);
 
   async function copyText(text: string) {
@@ -90,6 +91,64 @@ function PlatformTabs({ report }: { report: GoalImpactReport }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function RankingsShift({ championshipBefore, championshipAfter, teams }: {
+  championshipBefore: Map<string, number>;
+  championshipAfter: Map<string, number>;
+  teams: TournamentData["teams"];
+}) {
+  const teamById = new Map(teams.map((t) => [t.id, t]));
+
+  const afterSorted = [...championshipAfter.entries()]
+    .filter(([id]) => teamById.has(id))
+    .sort((a, b) => b[1] - a[1]);
+
+  const beforeRankMap = new Map(
+    [...championshipBefore.entries()]
+      .filter(([id]) => teamById.has(id))
+      .sort((a, b) => b[1] - a[1])
+      .map(([id], i) => [id, i + 1]),
+  );
+
+  const top10 = afterSorted.slice(0, 10).map(([id, afterPct], i) => {
+    const team = teamById.get(id)!;
+    const afterRank = i + 1;
+    const beforeRank = beforeRankMap.get(id) ?? afterRank;
+    const beforePct = championshipBefore.get(id) ?? afterPct;
+    return { team, afterRank, beforeRank, afterPct, beforePct };
+  });
+
+  if (top10.every((r) => r.beforeRank === r.afterRank)) return null;
+
+  return (
+    <div className="rankings-shift">
+      <div className="swing-label rankings-shift-title">Title odds — top 10 ranking shift</div>
+      <div className="rankings-shift-list">
+        {top10.map(({ team, afterRank, beforeRank, afterPct, beforePct }) => {
+          const moved = beforeRank - afterRank;
+          const changed = moved !== 0;
+          return (
+            <div key={team.id} className={`rankings-shift-row${changed ? " changed" : ""}`}>
+              <span className="rs-rank">{afterRank}</span>
+              <span className={`rs-move ${moved > 0 ? "up" : moved < 0 ? "down" : "same"}`}>
+                {moved > 0 ? `▲${moved}` : moved < 0 ? `▼${Math.abs(moved)}` : "—"}
+              </span>
+              <span className="rs-flag">{team.flag}</span>
+              <span className="rs-name">{team.name}</span>
+              <span className="rs-pct">
+                <span className="rs-before">{beforePct}%</span>
+                <span className="rs-arrow">→</span>
+                <span className={`rs-after${afterPct > beforePct ? " positive" : afterPct < beforePct ? " negative" : ""}`}>
+                  {afterPct}%
+                </span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -176,6 +235,12 @@ function GoalCard({ item, teams, origin }: { item: GoalWithImpact; teams: Tourna
             ))}
           </div>
 
+          <RankingsShift
+            championshipBefore={item.championshipBefore}
+            championshipAfter={item.championshipAfter}
+            teams={teams}
+          />
+
           <PlatformTabs report={report} />
         </>
       )}
@@ -183,7 +248,7 @@ function GoalCard({ item, teams, origin }: { item: GoalWithImpact; teams: Tourna
   );
 }
 
-export function NewsPage({ goalHistory, data }: { goalHistory: GoalWithImpact[]; data: TournamentData }) {
+export function GoalImpactPage({ goalHistory, data }: { goalHistory: GoalWithImpact[]; data: TournamentData }) {
   const origin = typeof window === "undefined" ? "" : window.location.origin;
 
   return (

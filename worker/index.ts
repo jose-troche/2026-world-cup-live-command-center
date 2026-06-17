@@ -1,6 +1,24 @@
 import { fallbackData, fallbackTeams } from "../src/data/fallback";
-import { buildGoalImpactContent, buildMatchPrediction, buildViralContent, buildWhatChanged } from "../src/lib/viral";
-import type { GoalEvent, Group, Match, Stadium, Team, TournamentData } from "../src/types";
+import { buildGoalImpactContent, buildMatchPrediction, buildViralContent, buildWhatChanged, slugify } from "../src/lib/viral";
+import type { GoalEvent, Group, Match, SerializedGoalWithImpact, Stadium, Team, TournamentData } from "../src/types";
+
+interface KVNamespace {
+  get<T>(key: string, type: "json"): Promise<T | null>;
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string): Promise<void>;
+}
+
+interface Fetcher {
+  fetch(request: Request): Promise<Response>;
+}
+
+type Env = {
+  GOAL_HISTORY: KVNamespace;
+  ASSETS: Fetcher;
+};
+
+const MAX_GOAL_HISTORY = 10;
+const GOAL_HISTORY_KEY = "goal_history";
 
 const ESPN_SCOREBOARD_URL =
   "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=20260611-20260719&limit=200";
@@ -455,22 +473,6 @@ function predictionCard(match: Match, request: Request) {
   `);
 }
 
-function whatChangedCard(data: Awaited<ReturnType<typeof getTournamentOrFallback>>, matchId: string, request: Request) {
-  const item =
-    buildWhatChanged(data, new URL(request.url).origin).find((entry) => entry.matchId === matchId) ??
-    buildWhatChanged(data, new URL(request.url).origin)[0];
-
-  if (!item) return baseCard(svgHeader("What changed?", "Cards appear after finished matches"));
-
-  const change = `${item.change > 0 ? "+" : ""}${item.change}%`;
-  return baseCard(`
-    ${svgHeader("What changed?", item.teamName)}
-    <text x="74" y="405" fill="#d9ff43" font-family="monospace" font-size="104">${xmlEscape(change)}</text>
-    <text x="74" y="465" fill="#c5cfca" font-family="Manrope, Arial, sans-serif" font-size="31">${item.before}% before match · ${item.after}% after match</text>
-    <text x="74" y="505" fill="#8b9993" font-family="Manrope, Arial, sans-serif" font-size="25">${xmlEscape(item.result)}</text>
-  `);
-}
-
 function listCard(kicker: string, title: string, rows: Array<[string, string]>) {
   return baseCard(`
     ${svgHeader(kicker, title)}
@@ -647,9 +649,74 @@ function buildFeed(origin: string) {
 </rss>`;
 }
 
+function resolveOgCardUrl(pathname: string, origin: string): string {
+  const matchRoute = /^\/matches\/(.+)$/.exec(pathname);
+  if (matchRoute) {
+    const rawId = decodeURIComponent(matchRoute[1]);
+    const byId = fallbackData.matches.find((m) => m.id === rawId);
+    if (byId) return `${origin}/api/cards/match/${encodeURIComponent(byId.id)}.svg`;
+    const bySlug = fallbackData.matches.find((m) => slugify(`${m.homeName}-${m.awayName}`) === rawId);
+    if (bySlug) return `${origin}/api/cards/match/${encodeURIComponent(bySlug.id)}.svg`;
+    return `${origin}/api/cards/match/${encodeURIComponent(rawId)}.svg`;
+  }
+  const contentRoute = /^\/content\/(.+)$/.exec(pathname);
+  if (contentRoute) return `${origin}/api/cards/content/${contentRoute[1]}.svg`;
+  return `${origin}/api/cards/power-rankings.svg`;
+}
+
+async function serveWithOgTags(env: Env, origin: string, cardImageUrl: string): Promise<Response | null> {
+  try {
+    const assetRes = await env.ASSETS.fetch(new Request(`${origin}/index.html`));
+    if (!assetRes.ok) return null;
+    const html = await assetRes.text();
+    const tags = [
+      `<meta property="og:image" content="${cardImageUrl}" />`,
+      `<meta property="og:image:width" content="1200" />`,
+      `<meta property="og:image:height" content="630" />`,
+      `<meta name="twitter:card" content="summary_large_image" />`,
+      `<meta name="twitter:image" content="${cardImageUrl}" />`,
+    ].join("\n    ");
+    const injected = html.replace("</head>", `    ${tags}\n  </head>`);
+    return new Response(injected, {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "public, max-age=60, s-maxage=60",
+      },
+    });
+  } catch {
+    return null;
+  }
+}
+
 export default {
-  async fetch(request: Request) {
+  async fetch(request: Request, env: Env) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/api/goals") {
+      if (request.method === "GET") {
+        const raw = await env.GOAL_HISTORY.get<SerializedGoalWithImpact[]>(GOAL_HISTORY_KEY, "json");
+        return json(raw ?? [], 200, "no-store");
+      }
+
+      if (request.method === "POST") {
+        let incoming: SerializedGoalWithImpact[];
+        try {
+          incoming = (await request.json()) as SerializedGoalWithImpact[];
+        } catch {
+          return json({ error: "Invalid JSON body" }, 400, "no-store");
+        }
+        const existing = (await env.GOAL_HISTORY.get<SerializedGoalWithImpact[]>(GOAL_HISTORY_KEY, "json")) ?? [];
+        const goalKey = (g: SerializedGoalWithImpact) =>
+          `${g.event.matchId}-${g.event.scoreAfter.home}-${g.event.scoreAfter.away}-${g.event.scorerTeam}`;
+        const seen = new Set(existing.map(goalKey));
+        const deduped = incoming.filter((g) => !seen.has(goalKey(g)));
+        const updated = [...deduped, ...existing].slice(0, MAX_GOAL_HISTORY);
+        await env.GOAL_HISTORY.put(GOAL_HISTORY_KEY, JSON.stringify(updated));
+        return json(updated, 200, "no-store");
+      }
+
+      return json({ error: "Method not allowed" }, 405, "no-store");
+    }
 
     if (url.pathname === "/api/health") {
       return json({ ok: true, service: "touchline-26" }, 200, "no-store");
@@ -728,12 +795,6 @@ export default {
         fallbackData.matches.find((item) => item.id === decodeURIComponent(matchCard[1]));
       if (!match) return svg(baseCard(svgHeader("Prediction", "Match not found")), 404, "no-store");
       return svg(predictionCard(match, request));
-    }
-
-    const changedCard = /^\/api\/cards\/what-changed\/(.+)\.svg$/.exec(url.pathname);
-    if (changedCard) {
-      const tournament = await getTournamentOrFallback();
-      return svg(whatChangedCard(tournament, decodeURIComponent(changedCard[1]), request));
     }
 
     const contentCard = /^\/api\/cards\/content\/(.+)\.svg$/.exec(url.pathname);
@@ -843,10 +904,17 @@ export default {
       return json({ url: page.result.url }, 200, "no-store");
     }
 
+    // Serve SPA with injected og:image for social sharing routes
+    if (env.ASSETS) {
+      const ogCardUrl = resolveOgCardUrl(url.pathname, url.origin);
+      const htmlResponse = await serveWithOgTags(env, url.origin, ogCardUrl);
+      if (htmlResponse) return htmlResponse;
+    }
+
     return json({ error: "The requested endpoint was not found." }, 404, "no-store");
   },
 
-  scheduled(controller: ScheduledControllerLike, _env: unknown, ctx: ExecutionContextLike) {
+  scheduled(controller: ScheduledControllerLike, _env: Env, ctx: ExecutionContextLike) {
     ctx.waitUntil(
       buildAutomationDigest(DEFAULT_ORIGIN)
         .then((digest) => {

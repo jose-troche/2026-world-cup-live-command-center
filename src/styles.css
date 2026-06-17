@@ -1855,6 +1855,92 @@ i.coral {
   color: var(--coral);
 }
 
+/* Rankings shift */
+.rankings-shift {
+  margin-bottom: 22px;
+}
+
+.rankings-shift-title {
+  margin-bottom: 10px;
+}
+
+.rankings-shift-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rankings-shift-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid transparent;
+  font-size: 13px;
+}
+
+.rankings-shift-row.changed {
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.rs-rank {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  width: 18px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.rs-move {
+  font-family: var(--mono);
+  font-size: 10px;
+  width: 28px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.rs-move.up { color: var(--lime); }
+.rs-move.down { color: var(--coral); }
+.rs-move.same { color: var(--muted); }
+
+.rs-flag {
+  font-size: 15px;
+  width: 20px;
+  flex-shrink: 0;
+}
+
+.rs-name {
+  flex: 1;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rs-pct {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.rs-before {
+  color: var(--muted);
+}
+
+.rs-arrow {
+  color: var(--muted);
+}
+
+.rs-after.positive { color: var(--lime); }
+.rs-after.negative { color: var(--coral); }
+
 /* Platform tabs */
 .platform-tabs-wrap {
   display: flex;
@@ -3509,7 +3595,7 @@ footer > span {
 
 .insights-cards-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
 }
 

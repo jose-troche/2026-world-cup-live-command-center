@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { simulateAdvancement } from "../lib/analytics";
+import { SHARE_HASHTAGS } from "../lib/viral";
 import type { Group, Match, Team } from "../types";
 import { Flag } from "./Flag";
 
@@ -60,21 +61,29 @@ export function GroupForecast({ groups, matches, teams, selectedGroupName }: Pro
           <p>We simulate every remaining group fixture 700 times, including qualification through the eight best third-place positions.</p>
         </div>
         <div className="model-badge"><Sparkles size={16} /> 700 simulations</div>
-        <button
-          className="share-btn"
-          onClick={() => {
+        <div className="insight-share-row">
+          {(() => {
             const url = `${window.location.origin}/groups`;
             const title = "Group stage advancement odds — Touchline 26";
-            if (navigator.share) {
-              navigator.share({ title, url }).catch(() => undefined);
-            } else {
-              window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${title} ${url}`)}`);
-            }
-          }}
-          aria-label="Share standings"
-        >
-          <Share2 size={15} /> Share standings
-        </button>
+            const tagged = `${title} ${SHARE_HASHTAGS}`;
+            return (
+              <>
+                <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${tagged}\n${url}`)}`} target="_blank" rel="noreferrer" className="share-pill">
+                  <Share2 size={13} /> X
+                </a>
+                <a href={`https://bsky.app/intent/compose?text=${encodeURIComponent(`${tagged}\n${url}`)}`} target="_blank" rel="noreferrer" className="share-pill">
+                  <Share2 size={13} /> Bluesky
+                </a>
+                <a href={`https://www.reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`} target="_blank" rel="noreferrer" className="share-pill">
+                  <Share2 size={13} /> Reddit
+                </a>
+                <a href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`} target="_blank" rel="noreferrer" className="share-pill">
+                  <Share2 size={13} /> LinkedIn
+                </a>
+              </>
+            );
+          })()}
+        </div>
       </section>
 
       <div className="group-tabs" aria-label="Select group">

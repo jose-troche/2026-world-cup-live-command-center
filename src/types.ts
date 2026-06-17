@@ -94,3 +94,11 @@ export type GoalWithImpact = {
   championshipBefore: Map<string, number>;
   championshipAfter: Map<string, number>;
 };
+
+export type SerializedGoalWithImpact = {
+  event: GoalEvent;
+  advancementBefore: [string, number][];
+  advancementAfter: [string, number][];
+  championshipBefore: [string, number][];
+  championshipAfter: [string, number][];
+};

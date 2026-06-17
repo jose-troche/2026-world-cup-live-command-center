@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Flame, Share2, Sparkles, TrendingUp, Trophy } from "lucide-react";
-import { buildViralContent } from "../lib/viral";
+import { buildViralContent, getMatchPath, SHARE_HASHTAGS } from "../lib/viral";
 import type { ContentStory, ViralContent } from "../lib/viral";
 import type { TournamentData } from "../types";
 
@@ -9,18 +9,12 @@ type Props = {
   routeStory?: ContentStory;
 };
 
-function shareUrl(title: string, url: string) {
-  if (typeof navigator !== "undefined" && navigator.share) {
-    navigator.share({ title, url }).catch(() => undefined);
-  } else {
-    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${title} ${url}`)}`);
-  }
-}
-
 function ShareButtons({ title, url }: { title: string; url: string }) {
-  const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(`${title}\n${url}`)}`;
-  const bskyUrl = `https://bsky.app/intent/compose?text=${encodeURIComponent(`${title}\n${url}`)}`;
-  const waUrl = `https://wa.me/?text=${encodeURIComponent(`${title} ${url}`)}`;
+  const tagged = `${title} ${SHARE_HASHTAGS}`;
+  const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(`${tagged}\n${url}`)}`;
+  const bskyUrl = `https://bsky.app/intent/compose?text=${encodeURIComponent(`${tagged}\n${url}`)}`;
+  const redditUrl = `https://www.reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`;
+  const linkedinUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`;
 
   return (
     <div className="insight-share-row">
@@ -30,8 +24,11 @@ function ShareButtons({ title, url }: { title: string; url: string }) {
       <a href={bskyUrl} target="_blank" rel="noreferrer" className="share-pill">
         <Share2 size={12} /> Bluesky
       </a>
-      <a href={waUrl} target="_blank" rel="noreferrer" className="share-pill">
-        <Share2 size={12} /> WhatsApp
+      <a href={redditUrl} target="_blank" rel="noreferrer" className="share-pill">
+        <Share2 size={12} /> Reddit
+      </a>
+      <a href={linkedinUrl} target="_blank" rel="noreferrer" className="share-pill">
+        <Share2 size={12} /> LinkedIn
       </a>
     </div>
   );
@@ -92,12 +89,18 @@ function VisualCard({
         <img src={cardUrl} alt={title} className="card-preview-img" loading="lazy" />
       </a>
       <div className="insight-share-row">
-        <button
-          className="share-pill"
-          onClick={() => shareUrl(shareTitle, pageUrl)}
-        >
-          <Share2 size={12} /> Share
-        </button>
+        <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${shareTitle} ${SHARE_HASHTAGS}\n${pageUrl}`)}`} target="_blank" rel="noreferrer" className="share-pill">
+          <Share2 size={12} /> X
+        </a>
+        <a href={`https://bsky.app/intent/compose?text=${encodeURIComponent(`${shareTitle} ${SHARE_HASHTAGS}\n${pageUrl}`)}`} target="_blank" rel="noreferrer" className="share-pill">
+          <Share2 size={12} /> Bluesky
+        </a>
+        <a href={`https://www.reddit.com/submit?url=${encodeURIComponent(pageUrl)}&title=${encodeURIComponent(shareTitle)}`} target="_blank" rel="noreferrer" className="share-pill">
+          <Share2 size={12} /> Reddit
+        </a>
+        <a href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(pageUrl)}`} target="_blank" rel="noreferrer" className="share-pill">
+          <Share2 size={12} /> LinkedIn
+        </a>
         <a href={cardUrl} target="_blank" rel="noreferrer" className="share-pill">
           Open card
         </a>
@@ -106,7 +109,7 @@ function VisualCard({
   );
 }
 
-function buildMoments(content: ViralContent, origin: string) {
+function buildMoments(content: ViralContent, origin: string, matches: import("../types").Match[]) {
   const moments: Array<{
     eyebrow: string;
     title: string;
@@ -118,12 +121,13 @@ function buildMoments(content: ViralContent, origin: string) {
 
   const topSwing = content.whatChanged[0];
   if (topSwing) {
+    const swingMatch = matches.find((m) => m.id === topSwing.matchId);
     moments.push({
       eyebrow: "Biggest swing",
       title: topSwing.title,
       summary: `${topSwing.teamName} advancement odds moved ${topSwing.change >= 0 ? "+" : ""}${topSwing.change}% after ${topSwing.result}.`,
       shareTitle: topSwing.title,
-      shareUrl: `${origin}/what-changed/${topSwing.matchId}`,
+      shareUrl: swingMatch ? `${origin}${getMatchPath(swingMatch)}` : `${origin}/insights`,
       icon: <TrendingUp size={19} />,
     });
   }
@@ -135,7 +139,7 @@ function buildMoments(content: ViralContent, origin: string) {
       title: topUpset.title,
       summary: `${topUpset.winnerName} (rated ${topUpset.winnerRating}) beat ${topUpset.loserName} (rated ${topUpset.favoriteRating}) ${topUpset.score} — upset score ${topUpset.upsetScore}.`,
       shareTitle: topUpset.title,
-      shareUrl: `${origin}/upsets`,
+      shareUrl: `${origin}/insights`,
       icon: <Flame size={19} />,
     });
   }
@@ -147,7 +151,7 @@ function buildMoments(content: ViralContent, origin: string) {
       title: `${topRanked.teamName} lead the power rankings`,
       summary: `${topRanked.teamName} sit top with a model score of ${topRanked.score}. ${topRanked.note}.`,
       shareTitle: `${topRanked.teamName} are the top-ranked team at World Cup 2026`,
-      shareUrl: `${origin}/power-rankings`,
+      shareUrl: `${origin}/insights`,
       icon: <Trophy size={19} />,
     });
   }
@@ -170,21 +174,10 @@ function buildMoments(content: ViralContent, origin: string) {
 export function InsightsPage({ data, routeStory }: Props) {
   const origin = typeof window === "undefined" ? "" : window.location.origin;
   const content = useMemo(() => buildViralContent(data, origin), [data, origin]);
-  const moments = useMemo(() => buildMoments(content, origin), [content, origin]);
+  const moments = useMemo(() => buildMoments(content, origin, data.matches), [content, data.matches, origin]);
 
   return (
     <div className="viral-stack">
-      <section className="lab-intro viral-intro">
-        <div>
-          <span className="eyebrow">Insights</span>
-          <h2>Today's biggest moments</h2>
-          <p>
-            The most statistically significant events from the tournament — probability swings, upsets, and the model's top story, ready to share.
-          </p>
-        </div>
-        <div className="model-badge"><Sparkles size={16} /> {moments.length} moments</div>
-      </section>
-
       {routeStory && (
         <article className="panel story-article">
           <span className="eyebrow">{routeStory.phase}</span>
@@ -205,44 +198,49 @@ export function InsightsPage({ data, routeStory }: Props) {
         </article>
       )}
 
-      <section className="insights-moments-grid">
-        {moments.map((moment) => (
-          <MomentCard key={moment.title} {...moment} />
-        ))}
-      </section>
-
       <section className="insights-cards-section">
-        <div className="section-heading">
+        <section className="lab-intro viral-intro">
           <div>
-            <span className="eyebrow">Share cards</span>
-            <h3>Visual match cards</h3>
+            <span className="eyebrow">Shareable visuals</span>
+            <h2>Post-ready cards</h2>
+            <p>
+              Snapshot cards generated from live tournament data — drop them straight into X, Bluesky, or wherever you share.
+            </p>
           </div>
-        </div>
+        </section>
         <div className="insights-cards-grid">
           <VisualCard
             eyebrow="Power rankings"
             title="Team strength rankings"
             cardUrl={`${origin}/api/cards/power-rankings.svg`}
             shareTitle="2026 World Cup power rankings — Touchline 26"
-            pageUrl={`${origin}/power-rankings`}
+            pageUrl={`${origin}/insights`}
           />
           <VisualCard
             eyebrow="Upsets"
             title="Biggest upsets"
             cardUrl={`${origin}/api/cards/upsets.svg`}
             shareTitle="2026 World Cup biggest upsets — Touchline 26"
-            pageUrl={`${origin}/upsets`}
+            pageUrl={`${origin}/insights`}
           />
-          {content.prediction && (
-            <VisualCard
-              eyebrow="Match prediction"
-              title={`${content.prediction.homeName} vs ${content.prediction.awayName}`}
-              cardUrl={content.prediction.cardUrl}
-              shareTitle={`${content.prediction.homeName} vs ${content.prediction.awayName} prediction — Touchline 26`}
-              pageUrl={content.prediction.pageUrl}
-            />
-          )}
         </div>
+      </section>
+
+      <section className="lab-intro viral-intro">
+        <div>
+          <span className="eyebrow">Insights</span>
+          <h2>Today's biggest moments</h2>
+          <p>
+            The most statistically significant events from the tournament — probability swings, upsets, and the model's top story, ready to share.
+          </p>
+        </div>
+        <div className="model-badge"><Sparkles size={16} /> {moments.length} moments</div>
+      </section>
+
+      <section className="insights-moments-grid">
+        {moments.map((moment) => (
+          <MomentCard key={moment.title} {...moment} />
+        ))}
       </section>
     </div>
   );

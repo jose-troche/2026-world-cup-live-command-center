@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import { Activity, Clock3, MapPin, Radio, ScanLine, Share2 } from "lucide-react";
 import { buildXgRace, expectedGoals, winProbability } from "../lib/analytics";
+import { getMatchPath, SHARE_HASHTAGS } from "../lib/viral";
 import type { Match, Stadium, Team } from "../types";
 import { Flag } from "./Flag";
 
@@ -202,21 +203,27 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
               <span className="eyebrow">Outcome model</span>
               <h3>Match result probability</h3>
             </div>
-            <button
-              className="share-btn"
-              onClick={() => {
-                const title = `${match.homeName} vs ${match.awayName} — ${Math.round(Math.max(probability.home, probability.away) * 100)}% projected winner`;
-                const url = `${window.location.origin}/matches/${match.id}`;
-                if (navigator.share) {
-                  navigator.share({ title, url }).catch(() => undefined);
-                } else {
-                  window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${title} ${url}`)}`);
-                }
-              }}
-              aria-label="Share prediction"
-            >
-              <Share2 size={15} />
-            </button>
+            {(() => {
+              const title = `${match.homeName} vs ${match.awayName} — ${Math.round(Math.max(probability.home, probability.away) * 100)}% projected winner`;
+              const url = `${window.location.origin}${getMatchPath(match)}`;
+              const tagged = `${title} ${SHARE_HASHTAGS}`;
+              return (
+                <div className="insight-share-row">
+                  <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${tagged}\n${url}`)}`} target="_blank" rel="noreferrer" className="share-pill">
+                    <Share2 size={12} /> X
+                  </a>
+                  <a href={`https://bsky.app/intent/compose?text=${encodeURIComponent(`${tagged}\n${url}`)}`} target="_blank" rel="noreferrer" className="share-pill">
+                    <Share2 size={12} /> Bluesky
+                  </a>
+                  <a href={`https://www.reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`} target="_blank" rel="noreferrer" className="share-pill">
+                    <Share2 size={12} /> Reddit
+                  </a>
+                  <a href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`} target="_blank" rel="noreferrer" className="share-pill">
+                    <Share2 size={12} /> LinkedIn
+                  </a>
+                </div>
+              );
+            })()}
           </div>
           <div className="probability-donut">
             <ResponsiveContainer width="100%" height={208}>

@@ -2,7 +2,7 @@ import type { GoalEvent, Group, Match, Standing, Team, TournamentData, WinProbab
 import { expectedGoals, getRating, winProbability } from "./analytics";
 
 export type ShareLink = {
-  label: "X" | "Facebook" | "WhatsApp" | "Copy";
+  label: "X" | "Bluesky" | "Reddit" | "LinkedIn" | "Copy";
   url: string;
 };
 
@@ -31,7 +31,6 @@ export type WhatChangedItem = {
   after: number;
   change: number;
   result: string;
-  cardUrl: string;
 };
 
 export type UpsetItem = {
@@ -86,7 +85,7 @@ export type ViralContent = {
 };
 
 export type PlatformPost = {
-  platform: "x" | "bluesky" | "whatsapp";
+  platform: "x" | "bluesky" | "reddit" | "linkedin";
   text: string;
   charCount: number;
   charLimit: number;
@@ -117,6 +116,7 @@ type StandingSeed = Standing & { group: string };
 
 const SITE_NAME = "Touchline 26";
 const DEFAULT_ORIGIN = "https://touchline26.com";
+export const SHARE_HASHTAGS = "#WorldCup26 #FIFA2026";
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -179,18 +179,23 @@ function mostLikely(probability: WinProbability, match: Match) {
 }
 
 function buildShareLinks(text: string, pageUrl: string): ShareLink[] {
+  const tagged = `${text} ${SHARE_HASHTAGS}`;
   return [
     {
       label: "X",
-      url: `https://twitter.com/intent/tweet?text=${encodeURIComponent(`${text}\n${pageUrl}`)}`,
+      url: `https://twitter.com/intent/tweet?text=${encodeURIComponent(`${tagged}\n${pageUrl}`)}`,
     },
     {
-      label: "Facebook",
-      url: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl)}`,
+      label: "Bluesky",
+      url: `https://bsky.app/intent/compose?text=${encodeURIComponent(`${tagged}\n${pageUrl}`)}`,
     },
     {
-      label: "WhatsApp",
-      url: `https://wa.me/?text=${encodeURIComponent(`${text} ${pageUrl}`)}`,
+      label: "Reddit",
+      url: `https://www.reddit.com/submit?url=${encodeURIComponent(pageUrl)}&title=${encodeURIComponent(text)}`,
+    },
+    {
+      label: "LinkedIn",
+      url: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(pageUrl)}`,
     },
     { label: "Copy", url: pageUrl },
   ];
@@ -344,7 +349,6 @@ export function buildWhatChanged(data: Pick<TournamentData, "teams" | "matches">
           after: afterChance,
           change: afterChance - beforeChance,
           result: `${match.homeName} ${match.homeScore}-${match.awayScore} ${match.awayName}`,
-          cardUrl: absoluteUrl(origin, `/api/cards/what-changed/${encodeURIComponent(match.id)}.svg`),
         };
       });
     })
@@ -441,8 +445,8 @@ function buildSocialPosts(content: Omit<ViralContent, "socialPosts">, origin: st
       phase: "after",
       title: "What Changed?",
       body: `${topChange.teamName}'s advancement outlook moved from ${topChange.before}% to ${topChange.after}% after ${topChange.result}.`,
-      url: absoluteUrl(origin, `/what-changed/${encodeURIComponent(topChange.matchId)}`),
-      cardUrl: topChange.cardUrl,
+      url: absoluteUrl(origin, "/insights"),
+      cardUrl: absoluteUrl(origin, "/api/cards/power-rankings.svg"),
     });
   }
 
@@ -452,7 +456,7 @@ function buildSocialPosts(content: Omit<ViralContent, "socialPosts">, origin: st
       phase: "after",
       title: "Upset Meter",
       body: `${topUpset.title} leads the Touchline 26 upset meter after a ${topUpset.score} result.`,
-      url: absoluteUrl(origin, "/upsets"),
+      url: absoluteUrl(origin, "/insights"),
       cardUrl: absoluteUrl(origin, "/api/cards/upsets.svg"),
     });
   }
@@ -462,7 +466,7 @@ function buildSocialPosts(content: Omit<ViralContent, "socialPosts">, origin: st
       phase: "daily",
       title: "Daily Power Rankings",
       body: `Touchline 26 Power Rankings: 1. ${content.powerRankings[0].teamName}, 2. ${content.powerRankings[1]?.teamName ?? "TBD"}, 3. ${content.powerRankings[2]?.teamName ?? "TBD"}.`,
-      url: absoluteUrl(origin, "/power-rankings"),
+      url: absoluteUrl(origin, "/insights"),
       cardUrl: absoluteUrl(origin, "/api/cards/power-rankings.svg"),
     });
   }
@@ -609,7 +613,11 @@ function buildSeoPages(data: Pick<TournamentData, "teams" | "groups" | "matches"
     path: getContentPath(story.slug),
     description: story.summary,
   }));
-  return [...matchPages, ...teamPages, ...groupPages, ...contentPages];
+  const hubPages = [
+    { title: "World Cup 2026 stories and insights", path: "/insights", description: "Probability swings, upsets, power rankings, and shareable analytics from Touchline 26." },
+    { title: "World Cup 2026 goal impact feed", path: "/goal-impact", description: "Every goal from World Cup 2026 with before/after title odds and ready-to-post analysis." },
+  ];
+  return [...hubPages, ...matchPages, ...teamPages, ...groupPages, ...contentPages];
 }
 
 function formatPlatformPost(
@@ -620,14 +628,18 @@ function formatPlatformPost(
   const limits: Record<PlatformPost["platform"], number> = {
     x: 280,
     bluesky: 300,
-    whatsapp: 0,
+    reddit: 0,
+    linkedin: 0,
   };
   const charLimit = limits[platform];
 
+  const alreadyTagged = text.includes(SHARE_HASHTAGS);
+  const tagged = alreadyTagged ? text : `${text} ${SHARE_HASHTAGS}`;
   const intentUrls: Record<PlatformPost["platform"], string | null> = {
-    x: `https://twitter.com/intent/tweet?text=${encodeURIComponent(`${text}\n${url}`)}`,
-    bluesky: `https://bsky.app/intent/compose?text=${encodeURIComponent(`${text}\n${url}`)}`,
-    whatsapp: `https://wa.me/?text=${encodeURIComponent(`${text}\n${url}`)}`,
+    x: `https://twitter.com/intent/tweet?text=${encodeURIComponent(`${tagged}\n${url}`)}`,
+    bluesky: `https://bsky.app/intent/compose?text=${encodeURIComponent(`${tagged}\n${url}`)}`,
+    reddit: `https://www.reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent(text)}`,
+    linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`,
   };
 
   if (platform === "x" && charLimit > 0) {
@@ -695,11 +707,10 @@ export function buildGoalImpactContent(
     awaySwing && `${event.awayName}: title ${awaySwing.championshipBefore}%→${awaySwing.championshipAfter}% (${awaySwing.championshipDelta >= 0 ? "+" : ""}${awaySwing.championshipDelta}%)`,
   ].filter(Boolean).join(" | ");
 
-  const hashtags = "#WorldCup2026 #Touchline26";
-  const coreText = `${scoreLine}\n${oddsLine}\n${hashtags}`;
+  const coreText = `${scoreLine}\n${oddsLine}\n${SHARE_HASHTAGS}`;
   const pageUrl = absoluteUrl(origin, `/matches/${slugify(`${event.homeName}-${event.awayName}`)}`)
 
-  const platforms: PlatformPost["platform"][] = ["x", "bluesky", "whatsapp"];
+  const platforms: PlatformPost["platform"][] = ["x", "bluesky", "reddit", "linkedin"];
   const platformPosts = platforms.map((platform) => formatPlatformPost(coreText, pageUrl, platform));
 
   return {

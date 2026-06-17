@@ -2,6 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import { fallbackTeams } from "../src/data/fallback";
 import worker, { buildGroupStandings, normalizeEspnMatches } from "./index";
 
+const mockEnv = {
+  GOAL_HISTORY: {
+    get: async () => null,
+    put: async () => undefined,
+  },
+  ASSETS: {
+    fetch: async () => new Response("", { status: 404 }),
+  },
+} as Parameters<typeof worker.fetch>[1];
+
 describe("ESPN scoreboard normalization", () => {
   it("maps a live Saudi Arabia lead over Uruguay into app match data", () => {
     const matches = normalizeEspnMatches({
@@ -114,7 +124,7 @@ describe("viral Worker endpoints", () => {
   it("returns a viral content feed when live data is unavailable", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
     try {
-      const response = await worker.fetch(new Request("https://touchline26.test/api/viral"));
+      const response = await worker.fetch(new Request("https://touchline26.test/api/viral"), mockEnv);
       const payload = await response.json() as { prediction?: { title: string }; powerRankings: unknown[] };
 
       expect(response.status).toBe(200);
@@ -128,7 +138,7 @@ describe("viral Worker endpoints", () => {
   it("returns an SVG match prediction card", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
     try {
-      const response = await worker.fetch(new Request("https://touchline26.test/api/cards/match/14.svg"));
+      const response = await worker.fetch(new Request("https://touchline26.test/api/cards/match/14.svg"), mockEnv);
       const body = await response.text();
 
       expect(response.status).toBe(200);
@@ -143,12 +153,12 @@ describe("viral Worker endpoints", () => {
   it("returns generated content stories and story cards", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
     try {
-      const listResponse = await worker.fetch(new Request("https://touchline26.test/api/content"));
+      const listResponse = await worker.fetch(new Request("https://touchline26.test/api/content"), mockEnv);
       const listPayload = await listResponse.json() as { stories: Array<{ slug: string; title: string }> };
       const firstStory = listPayload.stories[0];
-      const storyResponse = await worker.fetch(new Request(`https://touchline26.test/api/content/${firstStory.slug}`));
+      const storyResponse = await worker.fetch(new Request(`https://touchline26.test/api/content/${firstStory.slug}`), mockEnv);
       const story = await storyResponse.json() as { title: string; body: string[] };
-      const cardResponse = await worker.fetch(new Request(`https://touchline26.test/api/cards/content/${firstStory.slug}.svg`));
+      const cardResponse = await worker.fetch(new Request(`https://touchline26.test/api/cards/content/${firstStory.slug}.svg`), mockEnv);
       const card = await cardResponse.text();
 
       expect(listResponse.status).toBe(200);
@@ -166,7 +176,7 @@ describe("viral Worker endpoints", () => {
   it("returns a dry-run automation digest for scheduled social posts", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
     try {
-      const response = await worker.fetch(new Request("https://touchline26.test/api/automation/digest"));
+      const response = await worker.fetch(new Request("https://touchline26.test/api/automation/digest"), mockEnv);
       const payload = await response.json() as { mode: string; posts: unknown[]; platformPosts: unknown[]; note: string };
 
       expect(response.status).toBe(200);
@@ -182,7 +192,7 @@ describe("viral Worker endpoints", () => {
   it("returns platform-specific social drafts", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
     try {
-      const response = await worker.fetch(new Request("https://touchline26.test/api/social/outbox"));
+      const response = await worker.fetch(new Request("https://touchline26.test/api/social/outbox"), mockEnv);
       const payload = await response.json() as { mode: string; posts: Array<{ platform: string; status: string }> };
 
       expect(response.status).toBe(200);
@@ -197,12 +207,12 @@ describe("viral Worker endpoints", () => {
   it("serves crawler and AI discovery files", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
     try {
-      const sitemap = await worker.fetch(new Request("https://touchline26.test/sitemap.xml"));
+      const sitemap = await worker.fetch(new Request("https://touchline26.test/sitemap.xml"), mockEnv);
       const sitemapBody = await sitemap.text();
-      const robots = await worker.fetch(new Request("https://touchline26.test/robots.txt"));
-      const llms = await worker.fetch(new Request("https://touchline26.test/llms.txt"));
+      const robots = await worker.fetch(new Request("https://touchline26.test/robots.txt"), mockEnv);
+      const llms = await worker.fetch(new Request("https://touchline26.test/llms.txt"), mockEnv);
       const llmsBody = await llms.text();
-      const feed = await worker.fetch(new Request("https://touchline26.test/feed.xml"));
+      const feed = await worker.fetch(new Request("https://touchline26.test/feed.xml"), mockEnv);
       const feedBody = await feed.text();
 
       expect(sitemap.headers.get("Content-Type")).toContain("application/xml");

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Users } from "lucide-react";
 import type { Match, Team, WinProbability } from "../types";
 import { Flag } from "./Flag";
+import { ShareButtons } from "./ShareButtons";
+import { getMatchPath } from "../lib/viral";
 
 type Choice = "home" | "draw" | "away";
 
@@ -183,6 +185,17 @@ export function FanPoll({ match, modelProbability, homeTeam, awayTeam }: Props) 
           {match.status !== "finished" && voted && (
             <p className="fan-poll-voted-note">Your pick is locked in. Results update live.</p>
           )}
+          {total > 0 && (() => {
+            const leader = homePct >= drawPct && homePct >= awayPct ? match.homeName : awayPct >= drawPct ? match.awayName : "a draw";
+            const leaderPct = Math.max(homePct, drawPct, awayPct);
+            const shareTitle = `${leaderPct}% of fans pick ${leader} in ${match.homeName} vs ${match.awayName} — Touchline 26`;
+            const shareUrl = typeof window !== "undefined" ? `${window.location.origin}${getMatchPath(match)}` : "";
+            return (
+              <div className="insight-share-row" style={{ marginTop: 12 }}>
+                <ShareButtons title={shareTitle} url={shareUrl} />
+              </div>
+            );
+          })()}
         </div>
       )}
     </article>

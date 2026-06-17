@@ -3,7 +3,6 @@ import { Users } from "lucide-react";
 import type { Match, Team, WinProbability } from "../types";
 import { Flag } from "./Flag";
 import { ShareButtons } from "./ShareButtons";
-import { getMatchPath } from "../lib/viral";
 
 type Choice = "home" | "draw" | "away";
 
@@ -151,7 +150,7 @@ export function FanPoll({ match, modelProbability, homeTeam, awayTeam }: Props) 
           <div className="insight-share-row" style={{ marginTop: 8 }}>
             <ShareButtons
               title={`Who wins? ${match.homeName} vs ${match.awayName} — cast your vote on Touchline 26`}
-              url={typeof window !== "undefined" ? `${window.location.origin}${getMatchPath(match)}` : ""}
+              url={typeof window !== "undefined" ? window.location.href : ""}
             />
           </div>
         </div>
@@ -195,7 +194,7 @@ export function FanPoll({ match, modelProbability, homeTeam, awayTeam }: Props) 
             const leader = homePct >= drawPct && homePct >= awayPct ? match.homeName : awayPct >= drawPct ? match.awayName : "a draw";
             const leaderPct = Math.max(homePct, drawPct, awayPct);
             const shareTitle = `${leaderPct}% of fans pick ${leader} in ${match.homeName} vs ${match.awayName} — Touchline 26`;
-            const shareUrl = typeof window !== "undefined" ? `${window.location.origin}${getMatchPath(match)}` : "";
+            const shareUrl = typeof window !== "undefined" ? window.location.href : "";
             return (
               <div className="insight-share-row" style={{ marginTop: 12 }}>
                 <ShareButtons title={shareTitle} url={shareUrl} />

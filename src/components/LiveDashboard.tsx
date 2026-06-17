@@ -12,12 +12,13 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Activity, Clock3, MapPin, Radio, ScanLine, Share2 } from "lucide-react";
+import { Activity, Clock3, MapPin, Radio, ScanLine } from "lucide-react";
 import { buildXgRace, expectedGoals, winProbability } from "../lib/analytics";
-import { getMatchPath, SHARE_HASHTAGS } from "../lib/viral";
+import { getMatchPath } from "../lib/viral";
 import type { Match, Stadium, Team } from "../types";
 import { FanPoll } from "./FanPoll";
 import { Flag } from "./Flag";
+import { ShareButtons } from "./ShareButtons";
 
 type MatchListMode = "next" | "former";
 
@@ -149,8 +150,7 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
         </div>
       </section>
 
-      <section className="hero-grid">
-        <article className="panel match-stage">
+      <article className="panel match-stage">
           <div className="panel-kicker">
             <span>Group {match.group} · Matchday {match.matchday || 1}</span>
             <span className={`status-chip ${match.status}`}>
@@ -196,9 +196,16 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
               <strong>{match.status === "live" ? "In play" : match.status === "finished" ? "Final" : "Upcoming"}</strong>
             </div>
           </div>
-        </article>
+      </article>
 
-        <article className="panel win-card">
+      <FanPoll
+        match={match}
+        modelProbability={probability}
+        homeTeam={homeTeam}
+        awayTeam={awayTeam}
+      />
+
+      <article className="panel win-card">
           <div className="section-heading">
             <div>
               <span className="eyebrow">Outcome model</span>
@@ -207,21 +214,9 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
             {(() => {
               const title = `${match.homeName} vs ${match.awayName} — ${Math.round(Math.max(probability.home, probability.away) * 100)}% projected winner`;
               const url = `${window.location.origin}${getMatchPath(match)}`;
-              const tagged = `${title} ${SHARE_HASHTAGS}`;
               return (
                 <div className="insight-share-row">
-                  <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${tagged}\n${url}`)}`} target="_blank" rel="noreferrer" className="share-pill">
-                    <Share2 size={12} /> X
-                  </a>
-                  <a href={`https://bsky.app/intent/compose?text=${encodeURIComponent(`${tagged}\n${url}`)}`} target="_blank" rel="noreferrer" className="share-pill">
-                    <Share2 size={12} /> Bluesky
-                  </a>
-                  <a href={`https://www.reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`} target="_blank" rel="noreferrer" className="share-pill">
-                    <Share2 size={12} /> Reddit
-                  </a>
-                  <a href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`} target="_blank" rel="noreferrer" className="share-pill">
-                    <Share2 size={12} /> LinkedIn
-                  </a>
+                  <ShareButtons title={title} url={url} />
                 </div>
               );
             })()}
@@ -256,8 +251,7 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
               </div>
             ))}
           </div>
-        </article>
-      </section>
+      </article>
 
       <section className="analytics-grid">
         <article className="panel xg-panel">
@@ -317,13 +311,6 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
         </article>
 
       </section>
-
-      <FanPoll
-        match={match}
-        modelProbability={probability}
-        homeTeam={homeTeam}
-        awayTeam={awayTeam}
-      />
     </div>
   );
 }

@@ -5,7 +5,6 @@ import {
   Dices,
   RotateCcw,
   Settings2,
-  Share2,
   Trophy,
 } from "lucide-react";
 import { getRating, simulateKnockout } from "../lib/analytics";
@@ -19,9 +18,9 @@ import {
   type GroupRole,
   type GroupSelections,
 } from "../lib/bracket";
-import { SHARE_HASHTAGS } from "../lib/viral";
 import type { Team } from "../types";
 import { Flag } from "./Flag";
+import { ShareButtons } from "./ShareButtons";
 
 type Props = {
   teams: Team[];
@@ -397,27 +396,7 @@ export function BracketLab({ teams }: Props) {
               <strong>{championTeam.name}</strong>
               <span>Winner of this scenario</span>
               <div className="insight-share-row">
-                {(() => {
-                  const url = window.location.href;
-                  const title = `My 2026 World Cup bracket: ${championTeam.name} wins — Touchline 26`;
-                  const tagged = `${title} ${SHARE_HASHTAGS}`;
-                  return (
-                    <>
-                      <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${tagged}\n${url}`)}`} target="_blank" rel="noreferrer" className="share-pill">
-                        <Share2 size={13} /> X
-                      </a>
-                      <a href={`https://bsky.app/intent/compose?text=${encodeURIComponent(`${tagged}\n${url}`)}`} target="_blank" rel="noreferrer" className="share-pill">
-                        <Share2 size={13} /> Bluesky
-                      </a>
-                      <a href={`https://www.reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`} target="_blank" rel="noreferrer" className="share-pill">
-                        <Share2 size={13} /> Reddit
-                      </a>
-                      <a href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`} target="_blank" rel="noreferrer" className="share-pill">
-                        <Share2 size={13} /> LinkedIn
-                      </a>
-                    </>
-                  );
-                })()}
+                <ShareButtons title={`My 2026 World Cup bracket: ${championTeam.name} wins — Touchline 26`} url={window.location.href} />
               </div>
             </>
           ) : (

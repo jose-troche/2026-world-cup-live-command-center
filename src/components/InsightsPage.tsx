@@ -1,39 +1,15 @@
 import { useMemo } from "react";
-import { Flame, Share2, Sparkles, TrendingUp, Trophy } from "lucide-react";
+import { Flame, Sparkles, TrendingUp, Trophy } from "lucide-react";
 import { buildViralContent, getMatchPath, SHARE_HASHTAGS } from "../lib/viral";
 import type { ContentStory, ViralContent } from "../lib/viral";
 import type { TournamentData } from "../types";
 import { AccuracyTracker } from "./AccuracyTracker";
+import { ShareButtons } from "./ShareButtons";
 
 type Props = {
   data: TournamentData;
   routeStory?: ContentStory;
 };
-
-function ShareButtons({ title, url }: { title: string; url: string }) {
-  const tagged = `${title} ${SHARE_HASHTAGS}`;
-  const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(`${tagged}\n${url}`)}`;
-  const bskyUrl = `https://bsky.app/intent/compose?text=${encodeURIComponent(`${tagged}\n${url}`)}`;
-  const redditUrl = `https://www.reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`;
-  const linkedinUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`;
-
-  return (
-    <div className="insight-share-row">
-      <a href={xUrl} target="_blank" rel="noreferrer" className="share-pill">
-        <Share2 size={12} /> X
-      </a>
-      <a href={bskyUrl} target="_blank" rel="noreferrer" className="share-pill">
-        <Share2 size={12} /> Bluesky
-      </a>
-      <a href={redditUrl} target="_blank" rel="noreferrer" className="share-pill">
-        <Share2 size={12} /> Reddit
-      </a>
-      <a href={linkedinUrl} target="_blank" rel="noreferrer" className="share-pill">
-        <Share2 size={12} /> LinkedIn
-      </a>
-    </div>
-  );
-}
 
 function MomentCard({
   eyebrow,
@@ -60,7 +36,9 @@ function MomentCard({
         <span className="insight-icon">{icon}</span>
       </div>
       <p className="insight-summary">{summary}</p>
-      <ShareButtons title={shareTitle} url={url} />
+      <div className="insight-share-row">
+        <ShareButtons title={shareTitle} url={url} />
+      </div>
     </article>
   );
 }
@@ -90,18 +68,7 @@ function VisualCard({
         <img src={cardUrl} alt={title} className="card-preview-img" loading="lazy" />
       </a>
       <div className="insight-share-row">
-        <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${shareTitle} ${SHARE_HASHTAGS}\n${pageUrl}`)}`} target="_blank" rel="noreferrer" className="share-pill">
-          <Share2 size={12} /> X
-        </a>
-        <a href={`https://bsky.app/intent/compose?text=${encodeURIComponent(`${shareTitle} ${SHARE_HASHTAGS}\n${pageUrl}`)}`} target="_blank" rel="noreferrer" className="share-pill">
-          <Share2 size={12} /> Bluesky
-        </a>
-        <a href={`https://www.reddit.com/submit?url=${encodeURIComponent(pageUrl)}&title=${encodeURIComponent(shareTitle)}`} target="_blank" rel="noreferrer" className="share-pill">
-          <Share2 size={12} /> Reddit
-        </a>
-        <a href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(pageUrl)}`} target="_blank" rel="noreferrer" className="share-pill">
-          <Share2 size={12} /> LinkedIn
-        </a>
+        <ShareButtons title={shareTitle} url={pageUrl} />
         <a href={cardUrl} target="_blank" rel="noreferrer" className="share-pill">
           Open card
         </a>

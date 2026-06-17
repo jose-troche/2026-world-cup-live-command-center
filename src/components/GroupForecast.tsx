@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, FlaskConical, Info, Share2, Sparkles } from "lucide-react";
+import { BarChart3, FlaskConical, Info, Sparkles } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -11,10 +11,10 @@ import {
   YAxis,
 } from "recharts";
 import { simulateAdvancement } from "../lib/analytics";
-import { SHARE_HASHTAGS } from "../lib/viral";
 import type { Group, Match, Team } from "../types";
 import { Flag } from "./Flag";
 import { ScenarioSimulator } from "./ScenarioSimulator";
+import { ShareButtons } from "./ShareButtons";
 
 type Props = {
   groups: Group[];
@@ -65,27 +65,7 @@ export function GroupForecast({ groups, matches, teams, selectedGroupName, initi
         </div>
         <div className="model-badge"><Sparkles size={16} /> 700 simulations</div>
         <div className="insight-share-row">
-          {(() => {
-            const url = `${window.location.origin}/groups`;
-            const title = "Group stage advancement odds — Touchline 26";
-            const tagged = `${title} ${SHARE_HASHTAGS}`;
-            return (
-              <>
-                <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${tagged}\n${url}`)}`} target="_blank" rel="noreferrer" className="share-pill">
-                  <Share2 size={13} /> X
-                </a>
-                <a href={`https://bsky.app/intent/compose?text=${encodeURIComponent(`${tagged}\n${url}`)}`} target="_blank" rel="noreferrer" className="share-pill">
-                  <Share2 size={13} /> Bluesky
-                </a>
-                <a href={`https://www.reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}`} target="_blank" rel="noreferrer" className="share-pill">
-                  <Share2 size={13} /> Reddit
-                </a>
-                <a href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`} target="_blank" rel="noreferrer" className="share-pill">
-                  <Share2 size={13} /> LinkedIn
-                </a>
-              </>
-            );
-          })()}
+          <ShareButtons title="Group stage advancement odds — Touchline 26" url={`${window.location.origin}/groups`} />
         </div>
       </section>
 

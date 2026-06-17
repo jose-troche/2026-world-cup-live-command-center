@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Share2, Target } from "lucide-react";
+import { Target } from "lucide-react";
 import { winProbability } from "../lib/analytics";
-import { SHARE_HASHTAGS } from "../lib/viral";
 import type { Match, Team } from "../types";
+import { ShareButtons } from "./ShareButtons";
 
 type Choice = "home" | "draw" | "away";
 
@@ -154,18 +154,7 @@ export function AccuracyTracker({ matches, teams: _teams }: Props) {
           <h3><Target size={16} style={{ verticalAlign: "middle", marginRight: 6 }} />Prediction accuracy</h3>
         </div>
         <div className="insight-share-row">
-          <a
-            href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${shareText}\n${shareUrl}`)}`}
-            target="_blank" rel="noreferrer" className="share-pill"
-          >
-            <Share2 size={12} /> X
-          </a>
-          <a
-            href={`https://bsky.app/intent/compose?text=${encodeURIComponent(`${shareText}\n${shareUrl}`)}`}
-            target="_blank" rel="noreferrer" className="share-pill"
-          >
-            <Share2 size={12} /> Bluesky
-          </a>
+          <ShareButtons title={shareText} url={shareUrl} />
         </div>
       </div>
 

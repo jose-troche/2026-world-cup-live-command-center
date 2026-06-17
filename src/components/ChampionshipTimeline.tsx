@@ -12,6 +12,7 @@ import {
 import { TrendingUp } from "lucide-react";
 import { useChampionshipTimeline } from "../hooks/useChampionshipTimeline";
 import type { Team } from "../types";
+import { ShareButtons } from "./ShareButtons";
 
 type FilterMode = "top5" | "top10" | "custom";
 
@@ -110,12 +111,24 @@ export function ChampionshipTimeline({ teams }: Props) {
     );
   }
 
+  const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/timeline` : "";
+  const top3 = latestProbs
+    .slice(0, 3)
+    .map(([id]) => teamById.get(id)?.name ?? id)
+    .join(", ");
+
   return (
     <div className="timeline-panel panel">
       <div className="section-heading">
         <div>
           <span className="eyebrow">Tournament odds over time</span>
           <h3><TrendingUp size={16} style={{ verticalAlign: "middle", marginRight: 6 }} />Title race</h3>
+        </div>
+        <div className="insight-share-row">
+          <ShareButtons
+            title={`2026 World Cup title race — ${top3} lead — Touchline 26`}
+            url={shareUrl}
+          />
         </div>
       </div>
 

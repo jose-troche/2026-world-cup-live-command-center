@@ -194,7 +194,7 @@ export function FanPoll({ match, modelProbability, homeTeam, awayTeam }: Props) 
             const leader = homePct >= drawPct && homePct >= awayPct ? match.homeName : awayPct >= drawPct ? match.awayName : "a draw";
             const leaderPct = Math.max(homePct, drawPct, awayPct);
             const shareTitle = `${leaderPct}% of fans pick ${leader} in ${match.homeName} vs ${match.awayName} — Touchline 26`;
-            const shareUrl = typeof window !== "undefined" ? window.location.href : "";
+            const shareUrl = typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}#community-vote` : "";
             return (
               <div className="insight-share-row" style={{ marginTop: 12 }}>
                 <ShareButtons title={shareTitle} url={shareUrl} />

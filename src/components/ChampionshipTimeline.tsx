@@ -57,30 +57,40 @@ export function ChampionshipTimeline({ teams }: Props) {
     });
   }, [snapshots, visibleTeamIds]);
 
+  const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/timeline` : "";
+  const top3 = latestProbs
+    .slice(0, 3)
+    .map(([id]) => teamById.get(id)?.name ?? id)
+    .join(", ");
+  const shareTitle = top3
+    ? `2026 World Cup title race — ${top3} lead — Touchline 26`
+    : "2026 World Cup championship odds — Touchline 26";
+
+  const heading = (eyebrow: string) => (
+    <div className="section-heading">
+      <div>
+        <span className="eyebrow">{eyebrow}</span>
+        <h3><TrendingUp size={16} style={{ verticalAlign: "middle", marginRight: 6 }} />Title race</h3>
+      </div>
+      <div className="insight-share-row">
+        <ShareButtons title={shareTitle} url={shareUrl} />
+      </div>
+    </div>
+  );
+
   if (loading) {
     return (
       <div className="timeline-panel panel">
-        <div className="section-heading">
-          <div>
-            <span className="eyebrow">Tournament odds</span>
-            <h3><TrendingUp size={16} style={{ verticalAlign: "middle", marginRight: 6 }} />Title race</h3>
-          </div>
-        </div>
+        {heading("Tournament odds")}
         <p style={{ color: "var(--muted)", textAlign: "center", padding: 32 }}>Loading…</p>
       </div>
     );
   }
 
   if (!snapshots.length || snapshots.length < 2) {
-    // Show current odds as a bar chart fallback when not enough history
     return (
       <div className="timeline-panel panel">
-        <div className="section-heading">
-          <div>
-            <span className="eyebrow">Tournament odds</span>
-            <h3><TrendingUp size={16} style={{ verticalAlign: "middle", marginRight: 6 }} />Title race</h3>
-          </div>
-        </div>
+        {heading("Tournament odds")}
         <div className="timeline-empty">
           <TrendingUp size={32} color="var(--muted)" />
           <strong>Timeline builds as matches complete</strong>
@@ -111,26 +121,9 @@ export function ChampionshipTimeline({ teams }: Props) {
     );
   }
 
-  const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/timeline` : "";
-  const top3 = latestProbs
-    .slice(0, 3)
-    .map(([id]) => teamById.get(id)?.name ?? id)
-    .join(", ");
-
   return (
     <div className="timeline-panel panel">
-      <div className="section-heading">
-        <div>
-          <span className="eyebrow">Tournament odds over time</span>
-          <h3><TrendingUp size={16} style={{ verticalAlign: "middle", marginRight: 6 }} />Title race</h3>
-        </div>
-        <div className="insight-share-row">
-          <ShareButtons
-            title={`2026 World Cup title race — ${top3} lead — Touchline 26`}
-            url={shareUrl}
-          />
-        </div>
-      </div>
+      {heading("Tournament odds over time")}
 
       <div className="timeline-filter-row">
         {(["top5", "top10", "custom"] as FilterMode[]).map((mode) => (

@@ -3,6 +3,7 @@ import { Flame, Share2, Sparkles, TrendingUp, Trophy } from "lucide-react";
 import { buildViralContent, getMatchPath, SHARE_HASHTAGS } from "../lib/viral";
 import type { ContentStory, ViralContent } from "../lib/viral";
 import type { TournamentData } from "../types";
+import { AccuracyTracker } from "./AccuracyTracker";
 
 type Props = {
   data: TournamentData;
@@ -242,6 +243,8 @@ export function InsightsPage({ data, routeStory }: Props) {
           <MomentCard key={moment.title} {...moment} />
         ))}
       </section>
+
+      <AccuracyTracker matches={data.matches} teams={data.teams} />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { fallbackData, fallbackTeams } from "../src/data/fallback";
+import { simulateChampionship } from "../src/lib/analytics";
 import { buildGoalImpactContent, buildMatchPrediction, buildViralContent, buildWhatChanged, slugify } from "../src/lib/viral";
 import type { GoalEvent, Group, Match, SerializedGoalWithImpact, Stadium, Team, TournamentData } from "../src/types";
 
@@ -36,6 +37,15 @@ type Env = {
   ANALYTICS: D1Database;
   ANALYTICS_KEY: string;
 };
+
+type ChampionshipTimelineSnapshot = {
+  matchId: string;
+  matchLabel: string;
+  timestamp: string;
+  probabilities: [string, number][];
+};
+
+type ChampionshipTimelineData = ChampionshipTimelineSnapshot[];
 
 const MAX_GOAL_HISTORY = 10;
 const GOAL_HISTORY_KEY = "goal_history";
@@ -1022,6 +1032,63 @@ export default {
       }, 200, "no-store");
     }
 
+    const pollMatch = /^\/api\/polls\/([^/]+)$/.exec(url.pathname);
+    if (pollMatch) {
+      const matchId = decodeURIComponent(pollMatch[1]).slice(0, 64);
+
+      if (request.method === "GET") {
+        if (!env.ANALYTICS) return json({ home: 0, draw: 0, away: 0, total: 0 }, 200, "public, max-age=10, s-maxage=10");
+        const rows = await env.ANALYTICS.prepare(
+          "SELECT choice, COUNT(*) AS n FROM polls WHERE match_id = ? GROUP BY choice",
+        ).bind(matchId).all<{ choice: string; n: number }>();
+        const counts = { home: 0, draw: 0, away: 0 };
+        for (const row of rows.results) {
+          if (row.choice === "home" || row.choice === "draw" || row.choice === "away") {
+            counts[row.choice] = row.n;
+          }
+        }
+        return json({ ...counts, total: counts.home + counts.draw + counts.away }, 200, "public, max-age=10, s-maxage=10");
+      }
+
+      if (request.method === "POST") {
+        if (!env.ANALYTICS) return json({ ok: false }, 503, "no-store");
+        let choice: string;
+        try {
+          const body = (await request.json()) as { choice?: string };
+          choice = body.choice ?? "";
+        } catch {
+          return json({ error: "Invalid JSON" }, 400, "no-store");
+        }
+        if (choice !== "home" && choice !== "draw" && choice !== "away") {
+          return json({ error: "choice must be home, draw, or away" }, 400, "no-store");
+        }
+        await env.ANALYTICS.prepare(
+          "INSERT INTO polls (match_id, choice, voted_at) VALUES (?, ?, ?)",
+        ).bind(matchId, choice, Date.now()).run();
+        return json({ ok: true }, 200, "no-store");
+      }
+
+      return json({ error: "Method not allowed" }, 405, "no-store");
+    }
+
+    if (url.pathname === "/api/championship-timeline") {
+      const raw = await env.GOAL_HISTORY.get<ChampionshipTimelineData>("championship_timeline", "json");
+      if (raw && raw.length > 0) {
+        return json({ snapshots: raw }, 200, "public, max-age=60, s-maxage=60");
+      }
+      // Fallback: compute current odds on the fly
+      const tournament = await getTournamentOrFallback();
+      // simulateChampionship imported statically at top of file
+      const champProbs = simulateChampionship(tournament.groups, tournament.matches, tournament.teams);
+      const snapshot: ChampionshipTimelineSnapshot = {
+        matchId: "current",
+        matchLabel: "Current odds",
+        timestamp: new Date().toISOString(),
+        probabilities: [...champProbs.entries()],
+      };
+      return json({ snapshots: [snapshot] }, 200, "public, max-age=60, s-maxage=60");
+    }
+
     if (url.pathname === "/api/telegraph/publish" && request.method === "POST") {
       type TelegraphPublishBody = {
         title: string;
@@ -1065,26 +1132,52 @@ export default {
     return json({ error: "The requested endpoint was not found." }, 404, "no-store");
   },
 
-  scheduled(controller: ScheduledControllerLike, _env: Env, ctx: ExecutionContextLike) {
+  scheduled(controller: ScheduledControllerLike, env: Env, ctx: ExecutionContextLike) {
     ctx.waitUntil(
-      buildAutomationDigest(DEFAULT_ORIGIN)
-        .then((digest) => {
-          console.log(JSON.stringify({
-            event: "touchline26.automation.digest",
-            cron: controller.cron,
-            scheduledTime: controller.scheduledTime,
-            generatedAt: digest.generatedAt,
-            postCount: digest.posts.length,
-            source: digest.source,
-          }));
-        })
-        .catch((error) => {
-          console.error(JSON.stringify({
-            event: "touchline26.automation.digest_failed",
-            cron: controller.cron,
-            message: error instanceof Error ? error.message : "Unknown error",
-          }));
-        }),
+      (async () => {
+        // Save championship probability snapshot for the timeline chart
+        try {
+          const tournament = await getTournamentOrFallback();
+          const lastFinished = [...tournament.matches]
+            .filter((m) => m.status === "finished")
+            .sort((a, b) => (b.utcDate ?? b.localDate).localeCompare(a.utcDate ?? a.localDate))[0];
+
+          if (lastFinished) {
+            const champProbs = simulateChampionship(tournament.groups, tournament.matches, tournament.teams);
+            const snapshot: ChampionshipTimelineSnapshot = {
+              matchId: lastFinished.id,
+              matchLabel: `${lastFinished.homeName} ${lastFinished.homeScore}–${lastFinished.awayScore} ${lastFinished.awayName}`,
+              timestamp: new Date().toISOString(),
+              probabilities: [...champProbs.entries()],
+            };
+            const existing = (await env.GOAL_HISTORY.get<ChampionshipTimelineData>("championship_timeline", "json")) ?? [];
+            const deduped = [snapshot, ...existing.filter((s) => s.matchId !== lastFinished.id)].slice(0, 100);
+            await env.GOAL_HISTORY.put("championship_timeline", JSON.stringify(deduped));
+          }
+        } catch (err) {
+          console.error(JSON.stringify({ event: "touchline26.timeline.snapshot_failed", message: err instanceof Error ? err.message : "unknown" }));
+        }
+
+        // Automation digest
+        await buildAutomationDigest(DEFAULT_ORIGIN)
+          .then((digest) => {
+            console.log(JSON.stringify({
+              event: "touchline26.automation.digest",
+              cron: controller.cron,
+              scheduledTime: controller.scheduledTime,
+              generatedAt: digest.generatedAt,
+              postCount: digest.posts.length,
+              source: digest.source,
+            }));
+          })
+          .catch((error) => {
+            console.error(JSON.stringify({
+              event: "touchline26.automation.digest_failed",
+              cron: controller.cron,
+              message: error instanceof Error ? error.message : "Unknown error",
+            }));
+          });
+      })(),
     );
   },
 };

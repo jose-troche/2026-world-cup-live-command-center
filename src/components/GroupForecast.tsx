@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, Info, Share2, Sparkles } from "lucide-react";
+import { BarChart3, FlaskConical, Info, Share2, Sparkles } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -14,16 +14,19 @@ import { simulateAdvancement } from "../lib/analytics";
 import { SHARE_HASHTAGS } from "../lib/viral";
 import type { Group, Match, Team } from "../types";
 import { Flag } from "./Flag";
+import { ScenarioSimulator } from "./ScenarioSimulator";
 
 type Props = {
   groups: Group[];
   matches: Match[];
   teams: Team[];
   selectedGroupName?: string;
+  initialScenario?: string;
 };
 
-export function GroupForecast({ groups, matches, teams, selectedGroupName }: Props) {
+export function GroupForecast({ groups, matches, teams, selectedGroupName, initialScenario }: Props) {
   const [selectedGroup, setSelectedGroup] = useState(groups[0]?.name ?? "A");
+  const [scenarioMode, setScenarioMode] = useState(Boolean(initialScenario));
   const probabilities = useMemo(
     () => simulateAdvancement(groups, matches, teams),
     [groups, matches, teams],
@@ -86,19 +89,38 @@ export function GroupForecast({ groups, matches, teams, selectedGroupName }: Pro
         </div>
       </section>
 
-      <div className="group-tabs" aria-label="Select group">
-        {groups.map((item) => (
-          <button
-            className={item.name === group.name ? "active" : ""}
-            onClick={() => setSelectedGroup(item.name)}
-            key={item.name}
-          >
-            {item.name}
-          </button>
-        ))}
+      <div className="scenario-toggle-row">
+        <div className="group-tabs" aria-label="Select group">
+          {groups.map((item) => (
+            <button
+              className={item.name === group.name ? "active" : ""}
+              onClick={() => setSelectedGroup(item.name)}
+              key={item.name}
+            >
+              {item.name}
+            </button>
+          ))}
+        </div>
+        <button
+          className={`scenario-toggle-btn${scenarioMode ? " active" : ""}`}
+          onClick={() => setScenarioMode((v) => !v)}
+        >
+          <FlaskConical size={14} />
+          {scenarioMode ? "Exit scenario" : "What if…?"}
+        </button>
       </div>
 
-      <section className="forecast-grid">
+      {scenarioMode && (
+        <ScenarioSimulator
+          groups={groups}
+          matches={matches}
+          teams={teams}
+          selectedGroup={selectedGroup}
+          initialScenario={initialScenario}
+        />
+      )}
+
+      {!scenarioMode && <section className="forecast-grid">
         <article className="panel table-panel">
           <div className="section-heading">
             <div>
@@ -157,7 +179,7 @@ export function GroupForecast({ groups, matches, teams, selectedGroupName }: Pro
           </ResponsiveContainer>
           <p className="model-note"><Info size={14} /> Projections update with the standings and are not betting advice.</p>
         </article>
-      </section>
+      </section>}
     </div>
   );
 }

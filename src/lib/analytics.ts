@@ -365,3 +365,33 @@ export function simulateChampionship(
     teams.map((team) => [team.id, Math.round(((counts.get(team.id) ?? 0) / iterations) * 100)]),
   );
 }
+
+export function computeHypeScore(
+  match: Match,
+  advancementProbs: Map<string, number>,
+): number {
+  const homeRating = getRating(match.homeName);
+  const awayRating = getRating(match.awayName);
+  const avgRating = (homeRating + awayRating) / 2;
+  const ratingGap = Math.abs(homeRating - awayRating);
+
+  // Closer teams = more exciting; max at gap=0
+  const closeness = Math.max(0, 100 - ratingGap * 4.5);
+
+  // Higher combined quality = more hype
+  const quality = clamp((avgRating - 70) * 3.5, 0, 100);
+
+  // Stakes: both teams near the advancement bubble (40–65%) creates maximum tension
+  const homeAdv = advancementProbs.get(match.homeId) ?? 50;
+  const awayAdv = advancementProbs.get(match.awayId) ?? 50;
+  const avgAdv = (homeAdv + awayAdv) / 2;
+  const stakes = Math.max(0, 100 - Math.abs(avgAdv - 52) * 3);
+
+  // Upset potential: underdog has meaningful chance
+  const lowerRating = Math.min(homeRating, awayRating);
+  const upsetPotential = clamp((lowerRating - 70) * 2.5 + (30 - ratingGap) * 1.5, 0, 100);
+
+  const raw = closeness * 0.3 + quality * 0.2 + stakes * 0.3 + upsetPotential * 0.2;
+  const liveMult = match.status === "live" ? 1.5 : 1;
+  return clamp(Math.round(raw * liveMult), 0, 100);
+}

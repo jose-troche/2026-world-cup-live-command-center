@@ -10,7 +10,8 @@
       "/api/*", "/sitemap.xml", "/robots.txt", "/llms.txt", "/feed.xml",
       "/matches/*", "/what-changed/*", "/upsets", "/power-rankings",
       "/rankings", "/content/*", "/groups/*", "/teams/*",
-      "/bracket", "/compare", "/predictions", "/insights", "/news"
+      "/bracket", "/compare", "/predictions", "/insights", "/news",
+      "/schedule", "/timeline"
     ]
   },
   "kv_namespaces": [

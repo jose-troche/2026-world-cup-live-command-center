@@ -6,16 +6,20 @@ import {
   ChevronDown,
   CircleDot,
   Command,
+  Flame,
   GitCompareArrows,
   Menu,
   RefreshCw,
   Sparkles,
+  TrendingUp,
   Wifi,
   X,
   Zap,
 } from "lucide-react";
 import { BracketLab } from "./components/BracketLab";
+import { ChampionshipTimeline } from "./components/ChampionshipTimeline";
 import { GroupForecast } from "./components/GroupForecast";
+import { HypeOMeter } from "./components/HypeOMeter";
 import { InsightsPage } from "./components/InsightsPage";
 import { IntroExperience } from "./components/IntroExperience";
 import { LiveDashboard } from "./components/LiveDashboard";
@@ -29,13 +33,15 @@ import { buildViralContent, getContentPath, getMatchPath, getTeamPath } from "./
 import type { ContentStory } from "./lib/viral";
 import type { Match, Team } from "./types";
 
-type View = "live" | "groups" | "bracket" | "compare" | "insights" | "goal-impact";
+type View = "live" | "groups" | "bracket" | "compare" | "insights" | "goal-impact" | "schedule" | "timeline";
 
 const navigation: Array<{ id: View; label: string; icon: typeof Command }> = [
   { id: "live", label: "Match center", icon: Command },
   { id: "groups", label: "Advancement", icon: BarChart3 },
   { id: "compare", label: "Team comparison", icon: GitCompareArrows },
   { id: "bracket", label: "Bracket simulator", icon: Brackets },
+  { id: "schedule", label: "Hype-O-Meter", icon: Flame },
+  { id: "timeline", label: "Title race", icon: TrendingUp },
   { id: "insights", label: "Insights", icon: Sparkles },
   { id: "goal-impact", label: "Goal Impact", icon: Volleyball },
 ];
@@ -49,6 +55,8 @@ function getViewFromPath(pathname: string): View {
   if (pathname.startsWith("/bracket")) return "bracket";
   if (pathname.startsWith("/teams")) return "compare";
   if (pathname.startsWith("/goal-impact")) return "goal-impact";
+  if (pathname.startsWith("/schedule")) return "schedule";
+  if (pathname.startsWith("/timeline")) return "timeline";
   if (pathname.startsWith("/insights") || pathname.startsWith("/content")) return "insights";
   return "live";
 }
@@ -59,6 +67,8 @@ function getViewPath(view: View) {
   if (view === "compare") return "/teams";
   if (view === "insights") return "/insights";
   if (view === "goal-impact") return "/goal-impact";
+  if (view === "schedule") return "/schedule";
+  if (view === "timeline") return "/timeline";
   return "/";
 }
 
@@ -151,6 +161,10 @@ function App() {
     [fallbackViralContent.contentStories, pathname, viralContent.contentStories],
   );
   const routeGroup = getGroupFromPath(pathname);
+  const initialScenario = useMemo(() => {
+    if (typeof window === "undefined") return undefined;
+    return new URLSearchParams(window.location.search).get("scenario") ?? undefined;
+  }, []);
   const selectedMatch =
     routeMatch ?? data.matches.find((match) => match.id === selectedMatchId) ?? featuredMatch;
 
@@ -323,6 +337,8 @@ function App() {
               {view === "compare" && <>Measure how the<br /><em>contenders match up.</em></>}
               {view === "insights" && <>Stories and posts<br /><em>from live data.</em></>}
               {view === "goal-impact" && <>Every goal,<br /><em>ready to share.</em></>}
+              {view === "schedule" && <>Which match<br /><em>is must-watch?</em></>}
+              {view === "timeline" && <>Title odds,<br /><em>match by match.</em></>}
             </h1>
           </div>
           <div className="masthead-meta">
@@ -354,6 +370,7 @@ function App() {
             matches={data.matches}
             teams={data.teams}
             selectedGroupName={routeGroup ?? featuredMatch?.group}
+            initialScenario={initialScenario}
           />
         )}
         {view === "bracket" && <BracketLab teams={data.teams} />}
@@ -369,6 +386,20 @@ function App() {
         )}
         {view === "goal-impact" && (
           <GoalImpactPage goalHistory={goalHistory} data={data} />
+        )}
+        {view === "schedule" && (
+          <HypeOMeter
+            matches={data.matches}
+            teams={data.teams}
+            groups={data.groups}
+            onSelectMatch={(match) => {
+              setSelectedMatchId(match.id);
+              navigate("live");
+            }}
+          />
+        )}
+        {view === "timeline" && (
+          <ChampionshipTimeline teams={data.teams} />
         )}
       </main>
 

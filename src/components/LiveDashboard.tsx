@@ -16,6 +16,7 @@ import { Activity, Clock3, MapPin, Radio, ScanLine, Share2 } from "lucide-react"
 import { buildXgRace, expectedGoals, winProbability } from "../lib/analytics";
 import { getMatchPath, SHARE_HASHTAGS } from "../lib/viral";
 import type { Match, Stadium, Team } from "../types";
+import { FanPoll } from "./FanPoll";
 import { Flag } from "./Flag";
 
 type MatchListMode = "next" | "former";
@@ -316,6 +317,13 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
         </article>
 
       </section>
+
+      <FanPoll
+        match={match}
+        modelProbability={probability}
+        homeTeam={homeTeam}
+        awayTeam={awayTeam}
+      />
     </div>
   );
 }

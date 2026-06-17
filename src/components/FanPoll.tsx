@@ -148,6 +148,12 @@ export function FanPoll({ match, modelProbability, homeTeam, awayTeam }: Props) 
               <span>{label}</span>
             </button>
           ))}
+          <div className="insight-share-row" style={{ marginTop: 8 }}>
+            <ShareButtons
+              title={`Who wins? ${match.homeName} vs ${match.awayName} — cast your vote on Touchline 26`}
+              url={typeof window !== "undefined" ? `${window.location.origin}${getMatchPath(match)}` : ""}
+            />
+          </div>
         </div>
       ) : (
         <div className="fan-poll-results">

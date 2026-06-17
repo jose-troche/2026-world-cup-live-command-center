@@ -116,7 +116,7 @@ export function FanPoll({ match, modelProbability, homeTeam, awayTeam }: Props) 
   }
 
   return (
-    <article className="panel fan-poll-panel">
+    <article id="community-vote" className="panel fan-poll-panel">
       <div className="section-heading">
         <div>
           <span className="eyebrow">Community vote</span>
@@ -150,7 +150,7 @@ export function FanPoll({ match, modelProbability, homeTeam, awayTeam }: Props) 
           <div className="insight-share-row" style={{ marginTop: 8 }}>
             <ShareButtons
               title={`Who wins? ${match.homeName} vs ${match.awayName} — cast your vote on Touchline 26`}
-              url={typeof window !== "undefined" ? window.location.href : ""}
+              url={typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}#community-vote` : ""}
             />
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, Info, Sparkles } from "lucide-react";
+import { BarChart3, Info, Share2, Sparkles } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -60,6 +60,21 @@ export function GroupForecast({ groups, matches, teams, selectedGroupName }: Pro
           <p>We simulate every remaining group fixture 700 times, including qualification through the eight best third-place positions.</p>
         </div>
         <div className="model-badge"><Sparkles size={16} /> 700 simulations</div>
+        <button
+          className="share-btn"
+          onClick={() => {
+            const url = `${window.location.origin}/groups`;
+            const title = "Group stage advancement odds — Touchline 26";
+            if (navigator.share) {
+              navigator.share({ title, url }).catch(() => undefined);
+            } else {
+              window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${title} ${url}`)}`);
+            }
+          }}
+          aria-label="Share standings"
+        >
+          <Share2 size={15} /> Share standings
+        </button>
       </section>
 
       <div className="group-tabs" aria-label="Select group">

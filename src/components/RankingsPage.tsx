@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Flame, Trophy } from "lucide-react";
-import { buildViralContent } from "../lib/viral";
+import { buildPowerRankings, buildViralContent } from "../lib/viral";
 import type { TournamentData } from "../types";
 
 type Props = {
@@ -10,6 +10,7 @@ type Props = {
 export function RankingsPage({ data }: Props) {
   const origin = typeof window === "undefined" ? "" : window.location.origin;
   const content = useMemo(() => buildViralContent(data, origin), [data, origin]);
+  const powerRankings = useMemo(() => buildPowerRankings(data, 32), [data]);
 
   return (
     <div className="viral-stack">
@@ -21,19 +22,19 @@ export function RankingsPage({ data }: Props) {
             Daily team strength ratings derived from match results and pre-tournament ratings, plus model-scored upsets ranked by surprise factor.
           </p>
         </div>
-        <div className="model-badge"><Trophy size={16} /> {content.powerRankings.length} teams ranked</div>
+        <div className="model-badge"><Trophy size={16} /> {powerRankings.length} teams ranked</div>
       </section>
 
       <section className="viral-grid">
         <article className="panel viral-list power-list">
           <div className="section-heading">
             <div>
-              <span className="eyebrow">Daily</span>
+              <span className="eyebrow">All teams</span>
               <h3>Power rankings</h3>
             </div>
             <Trophy size={19} />
           </div>
-          {content.powerRankings.slice(0, 16).map((team) => (
+          {powerRankings.map((team) => (
             <div className="viral-row" key={team.teamId}>
               <div>
                 <strong>{team.rank}. {team.teamName}</strong>

@@ -5,6 +5,7 @@ import {
   Dices,
   RotateCcw,
   Settings2,
+  Share2,
   Trophy,
 } from "lucide-react";
 import { getRating, simulateKnockout } from "../lib/analytics";
@@ -370,6 +371,22 @@ export function BracketLab({ teams }: Props) {
               <Flag team={championTeam} size="lg" />
               <strong>{championTeam.name}</strong>
               <span>Winner of this scenario</span>
+              <button
+                className="share-btn"
+                onClick={() => {
+                  const url = window.location.href;
+                  const title = `My 2026 World Cup bracket: ${championTeam.name} wins — Touchline 26`;
+                  if (navigator.share) {
+                    navigator.share({ title, url }).catch(() => undefined);
+                  } else {
+                    navigator.clipboard.writeText(url).catch(() => undefined);
+                    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${title} ${url}`)}`);
+                  }
+                }}
+                aria-label="Share my bracket"
+              >
+                <Share2 size={14} /> Share my bracket
+              </button>
             </>
           ) : (
             <>

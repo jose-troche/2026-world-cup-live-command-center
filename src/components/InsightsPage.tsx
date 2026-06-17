@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
-import { ArrowUpRight, Clipboard, Newspaper, Share2, Sparkles } from "lucide-react";
+import { useMemo } from "react";
+import { Flame, Share2, Sparkles, TrendingUp, Trophy } from "lucide-react";
 import { buildViralContent } from "../lib/viral";
-import type { ContentStory } from "../lib/viral";
+import type { ContentStory, ViralContent } from "../lib/viral";
 import type { TournamentData } from "../types";
 
 type Props = {
@@ -9,32 +9,180 @@ type Props = {
   routeStory?: ContentStory;
 };
 
+function shareUrl(title: string, url: string) {
+  if (typeof navigator !== "undefined" && navigator.share) {
+    navigator.share({ title, url }).catch(() => undefined);
+  } else {
+    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${title} ${url}`)}`);
+  }
+}
+
+function ShareButtons({ title, url }: { title: string; url: string }) {
+  const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(`${title}\n${url}`)}`;
+  const bskyUrl = `https://bsky.app/intent/compose?text=${encodeURIComponent(`${title}\n${url}`)}`;
+  const waUrl = `https://wa.me/?text=${encodeURIComponent(`${title} ${url}`)}`;
+
+  return (
+    <div className="insight-share-row">
+      <a href={xUrl} target="_blank" rel="noreferrer" className="share-pill">
+        <Share2 size={12} /> X
+      </a>
+      <a href={bskyUrl} target="_blank" rel="noreferrer" className="share-pill">
+        <Share2 size={12} /> Bluesky
+      </a>
+      <a href={waUrl} target="_blank" rel="noreferrer" className="share-pill">
+        <Share2 size={12} /> WhatsApp
+      </a>
+    </div>
+  );
+}
+
+function MomentCard({
+  eyebrow,
+  title,
+  summary,
+  shareTitle,
+  shareUrl: url,
+  icon,
+}: {
+  eyebrow: string;
+  title: string;
+  summary: string;
+  shareTitle: string;
+  shareUrl: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <article className="panel insight-moment-card">
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow">{eyebrow}</span>
+          <h3>{title}</h3>
+        </div>
+        <span className="insight-icon">{icon}</span>
+      </div>
+      <p className="insight-summary">{summary}</p>
+      <ShareButtons title={shareTitle} url={url} />
+    </article>
+  );
+}
+
+function VisualCard({
+  eyebrow,
+  title,
+  cardUrl,
+  shareTitle,
+  pageUrl,
+}: {
+  eyebrow: string;
+  title: string;
+  cardUrl: string;
+  shareTitle: string;
+  pageUrl: string;
+}) {
+  return (
+    <article className="panel insight-visual-card">
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow">{eyebrow}</span>
+          <h3>{title}</h3>
+        </div>
+      </div>
+      <a href={cardUrl} target="_blank" rel="noreferrer" className="card-preview-link">
+        <img src={cardUrl} alt={title} className="card-preview-img" loading="lazy" />
+      </a>
+      <div className="insight-share-row">
+        <button
+          className="share-pill"
+          onClick={() => shareUrl(shareTitle, pageUrl)}
+        >
+          <Share2 size={12} /> Share
+        </button>
+        <a href={cardUrl} target="_blank" rel="noreferrer" className="share-pill">
+          Open card
+        </a>
+      </div>
+    </article>
+  );
+}
+
+function buildMoments(content: ViralContent, origin: string) {
+  const moments: Array<{
+    eyebrow: string;
+    title: string;
+    summary: string;
+    shareTitle: string;
+    shareUrl: string;
+    icon: React.ReactNode;
+  }> = [];
+
+  const topSwing = content.whatChanged[0];
+  if (topSwing) {
+    moments.push({
+      eyebrow: "Biggest swing",
+      title: topSwing.title,
+      summary: `${topSwing.teamName} advancement odds moved ${topSwing.change >= 0 ? "+" : ""}${topSwing.change}% after ${topSwing.result}.`,
+      shareTitle: topSwing.title,
+      shareUrl: `${origin}/what-changed/${topSwing.matchId}`,
+      icon: <TrendingUp size={19} />,
+    });
+  }
+
+  const topUpset = content.upsets[0];
+  if (topUpset) {
+    moments.push({
+      eyebrow: "Biggest upset",
+      title: topUpset.title,
+      summary: `${topUpset.winnerName} (rated ${topUpset.winnerRating}) beat ${topUpset.loserName} (rated ${topUpset.favoriteRating}) ${topUpset.score} — upset score ${topUpset.upsetScore}.`,
+      shareTitle: topUpset.title,
+      shareUrl: `${origin}/upsets`,
+      icon: <Flame size={19} />,
+    });
+  }
+
+  const topRanked = content.powerRankings[0];
+  if (topRanked) {
+    moments.push({
+      eyebrow: "Current #1",
+      title: `${topRanked.teamName} lead the power rankings`,
+      summary: `${topRanked.teamName} sit top with a model score of ${topRanked.score}. ${topRanked.note}.`,
+      shareTitle: `${topRanked.teamName} are the top-ranked team at World Cup 2026`,
+      shareUrl: `${origin}/power-rankings`,
+      icon: <Trophy size={19} />,
+    });
+  }
+
+  const liveStory = content.contentStories.find((s) => s.phase === "during") ?? content.contentStories[0];
+  if (liveStory) {
+    moments.push({
+      eyebrow: "Latest story",
+      title: liveStory.title,
+      summary: liveStory.summary,
+      shareTitle: liveStory.title,
+      shareUrl: liveStory.pageUrl.startsWith("http") ? liveStory.pageUrl : `${origin}${liveStory.pageUrl}`,
+      icon: <Sparkles size={19} />,
+    });
+  }
+
+  return moments;
+}
+
 export function InsightsPage({ data, routeStory }: Props) {
-  const [copied, setCopied] = useState("");
   const origin = typeof window === "undefined" ? "" : window.location.origin;
   const content = useMemo(() => buildViralContent(data, origin), [data, origin]);
-
-  async function copyUrl(url: string) {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(url);
-      window.setTimeout(() => setCopied(""), 1600);
-    } catch {
-      setCopied("");
-    }
-  }
+  const moments = useMemo(() => buildMoments(content, origin), [content, origin]);
 
   return (
     <div className="viral-stack">
       <section className="lab-intro viral-intro">
         <div>
-          <span className="eyebrow">Content engine</span>
-          <h2>Stories and posts from live data</h2>
+          <span className="eyebrow">Insights</span>
+          <h2>Today's biggest moments</h2>
           <p>
-            Generated stories, social post templates, and shareable content — all derived from the same live model powering the rest of Touchline 26.
+            The most statistically significant events from the tournament — probability swings, upsets, and the model's top story, ready to share.
           </p>
         </div>
-        <div className="model-badge"><Sparkles size={16} /> {content.socialPosts.length} posts ready</div>
+        <div className="model-badge"><Sparkles size={16} /> {moments.length} moments</div>
       </section>
 
       {routeStory && (
@@ -53,118 +201,47 @@ export function InsightsPage({ data, routeStory }: Props) {
             alt={`Share card: ${routeStory.title}`}
             loading="lazy"
           />
-          <div className="viral-actions">
-            <a
-              href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${routeStory.title}\n${routeStory.pageUrl}`)}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <Share2 size={14} />
-              X
-            </a>
-            <a
-              href={`https://bsky.app/intent/compose?text=${encodeURIComponent(`${routeStory.title}\n${routeStory.pageUrl}`)}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <Share2 size={14} />
-              Bluesky
-            </a>
-            <a
-              href={`https://wa.me/?text=${encodeURIComponent(`${routeStory.summary} ${routeStory.pageUrl}`)}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <Share2 size={14} />
-              WhatsApp
-            </a>
-            <a
-              href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(routeStory.pageUrl)}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <Share2 size={14} />
-              Facebook
-            </a>
-            <a
-              href={`https://t.me/share/url?url=${encodeURIComponent(routeStory.pageUrl)}&text=${encodeURIComponent(routeStory.title)}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <Share2 size={14} />
-              Telegram
-            </a>
-            <button onClick={() => copyUrl(routeStory.summary)}>
-              <Clipboard size={14} />
-              Copy summary
-            </button>
-            <a href={routeStory.cardUrl} target="_blank" rel="noreferrer">
-              <ArrowUpRight size={14} />
-              Open card
-            </a>
-          </div>
-          {copied === routeStory.summary && <p className="copy-status">Summary copied.</p>}
+          <ShareButtons title={routeStory.title} url={routeStory.pageUrl.startsWith("http") ? routeStory.pageUrl : `${origin}${routeStory.pageUrl}`} />
         </article>
       )}
 
-      <section className="viral-grid">
-        <article className="panel viral-list story-list">
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">Content engine</span>
-              <h3>Generated stories</h3>
-            </div>
-            <Newspaper size={19} />
-          </div>
-          {content.contentStories.slice(0, 6).map((story) => (
-            <div className="story-row" key={story.slug}>
-              <span>{story.phase}</span>
-              <a href={story.pageUrl}>{story.title}</a>
-              <p>{story.summary}</p>
-              <div>
-                <button onClick={() => copyUrl(story.summary)}>Copy summary</button>
-                <a href={story.cardUrl} target="_blank" rel="noreferrer">Card</a>
-              </div>
-            </div>
-          ))}
-        </article>
-
-        <article className="panel viral-list post-list">
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">Automation queue</span>
-              <h3>Post templates</h3>
-            </div>
-          </div>
-          {content.socialPosts.map((post) => (
-            <div className="post-template" key={`${post.phase}-${post.title}`}>
-              <span>{post.phase}</span>
-              <strong>{post.title}</strong>
-              <p>{post.body}</p>
-              <div>
-                <button onClick={() => copyUrl(post.body)}>Copy text</button>
-                <a href={post.cardUrl} target="_blank" rel="noreferrer">Card</a>
-              </div>
-            </div>
-          ))}
-        </article>
+      <section className="insights-moments-grid">
+        {moments.map((moment) => (
+          <MomentCard key={moment.title} {...moment} />
+        ))}
       </section>
 
-      <section className="panel seo-panel">
+      <section className="insights-cards-section">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">SEO and AI visibility</span>
-            <h3>Generated page inventory</h3>
+            <span className="eyebrow">Share cards</span>
+            <h3>Visual match cards</h3>
           </div>
-          <span>{content.seoPages.length} targets</span>
         </div>
-        <div className="seo-grid">
-          {content.seoPages.slice(0, 12).map((page) => (
-            <a href={page.path} key={page.path}>
-              <strong>{page.title}</strong>
-              <span>{page.description}</span>
-            </a>
-          ))}
+        <div className="insights-cards-grid">
+          <VisualCard
+            eyebrow="Power rankings"
+            title="Team strength rankings"
+            cardUrl={`${origin}/api/cards/power-rankings.svg`}
+            shareTitle="2026 World Cup power rankings — Touchline 26"
+            pageUrl={`${origin}/power-rankings`}
+          />
+          <VisualCard
+            eyebrow="Upsets"
+            title="Biggest upsets"
+            cardUrl={`${origin}/api/cards/upsets.svg`}
+            shareTitle="2026 World Cup biggest upsets — Touchline 26"
+            pageUrl={`${origin}/upsets`}
+          />
+          {content.prediction && (
+            <VisualCard
+              eyebrow="Match prediction"
+              title={`${content.prediction.homeName} vs ${content.prediction.awayName}`}
+              cardUrl={content.prediction.cardUrl}
+              shareTitle={`${content.prediction.homeName} vs ${content.prediction.awayName} prediction — Touchline 26`}
+              pageUrl={content.prediction.pageUrl}
+            />
+          )}
         </div>
       </section>
     </div>

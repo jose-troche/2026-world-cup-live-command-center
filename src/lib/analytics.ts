@@ -108,26 +108,37 @@ export function winProbability(match: Match): WinProbability {
   return { home: home / total, draw: draw / total, away: away / total };
 }
 
+function distributeGoals(count: number, minutesPlayed: number): number[] {
+  return Array.from({ length: count }, (_, i) =>
+    Math.round(((i + 1) / (count + 1)) * minutesPlayed),
+  );
+}
+
 export function buildXgRace(match: Match) {
   const baseline = expectedGoals(match.homeName, match.awayName);
   const endMinute = match.status === "live" ? Math.max(match.minute, 15) : 90;
+  const minutesPlayed = match.status === "scheduled" ? 0 : Math.max(match.minute, 1);
   const steps = Math.ceil(endMinute / 5);
-  let home = 0;
-  let away = 0;
-  const points = [{ minute: 0, home: 0, away: 0 }];
-  const matchSeed = Number(match.id) || hash(match.id);
+
+  const homeGoalMinutes = distributeGoals(match.homeScore, minutesPlayed);
+  const awayGoalMinutes = distributeGoals(match.awayScore, minutesPlayed);
+
+  let projHome = 0;
+  let projAway = 0;
+  let actualHome = 0;
+  let actualAway = 0;
+  let prevMinute = 0;
+
+  const points = [{ minute: 0, projHome: 0, projAway: 0, actualHome: 0, actualAway: 0 }];
 
   for (let step = 1; step <= steps; step += 1) {
     const minute = Math.min(step * 5, endMinute);
-    const homePulse = 0.45 + Math.abs(Math.sin(step * 1.71 + matchSeed)) * 0.95;
-    const awayPulse = 0.4 + Math.abs(Math.cos(step * 1.37 + matchSeed)) * 0.9;
-    home += (baseline.home / 18) * homePulse;
-    away += (baseline.away / 18) * awayPulse;
-    points.push({
-      minute,
-      home: Number(home.toFixed(2)),
-      away: Number(away.toFixed(2)),
-    });
+    projHome = Number(((baseline.home / 18) * step).toFixed(2));
+    projAway = Number(((baseline.away / 18) * step).toFixed(2));
+    actualHome += homeGoalMinutes.filter((m) => m > prevMinute && m <= minute).length;
+    actualAway += awayGoalMinutes.filter((m) => m > prevMinute && m <= minute).length;
+    points.push({ minute, projHome, projAway, actualHome, actualAway });
+    prevMinute = minute;
   }
 
   return points;

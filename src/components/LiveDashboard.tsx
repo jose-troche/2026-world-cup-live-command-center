@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Activity, Clock3, MapPin, Radio, ScanLine } from "lucide-react";
+import { Activity, Clock3, MapPin, Radio, ScanLine, Share2 } from "lucide-react";
 import { buildXgRace, expectedGoals, winProbability } from "../lib/analytics";
 import type { Match, Stadium, Team } from "../types";
 import { Flag } from "./Flag";
@@ -77,8 +77,12 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
   const stadium = stadiums.find((item) => item.id === match.stadiumId);
   const probability = winProbability(match);
   const xgRace = buildXgRace(match);
-  const xg = xgRace.at(-1) ?? { home: 0, away: 0 };
-  const preMatchXg = expectedGoals(match.homeName, match.awayName);
+  const baseline = expectedGoals(match.homeName, match.awayName);
+  const timeLeft = Math.max(0, (90 - match.minute) / 90);
+  const projectedXg = {
+    home: match.homeScore + baseline.home * timeLeft,
+    away: match.awayScore + baseline.away * timeLeft,
+  };
   const probabilityData = [
     { name: match.homeName, value: probability.home, color: "#d9ff43" },
     { name: "Draw", value: probability.draw, color: "#66716d" },
@@ -183,11 +187,7 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
           <div className="signal-strip">
             <div>
               <span>Projected xG</span>
-              <strong>{xg.home.toFixed(2)} <i>–</i> {xg.away.toFixed(2)}</strong>
-            </div>
-            <div>
-              <span>Pre-match baseline</span>
-              <strong>{preMatchXg.home.toFixed(2)} <i>–</i> {preMatchXg.away.toFixed(2)}</strong>
+              <strong>{projectedXg.home.toFixed(2)} <i>–</i> {projectedXg.away.toFixed(2)}</strong>
             </div>
             <div>
               <span>Match phase</span>
@@ -202,7 +202,21 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
               <span className="eyebrow">Outcome model</span>
               <h3>Match result probability</h3>
             </div>
-            <Activity size={19} />
+            <button
+              className="share-btn"
+              onClick={() => {
+                const title = `${match.homeName} vs ${match.awayName} — ${Math.round(Math.max(probability.home, probability.away) * 100)}% projected winner`;
+                const url = `${window.location.origin}/matches/${match.id}`;
+                if (navigator.share) {
+                  navigator.share({ title, url }).catch(() => undefined);
+                } else {
+                  window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${title} ${url}`)}`);
+                }
+              }}
+              aria-label="Share prediction"
+            >
+              <Share2 size={15} />
+            </button>
           </div>
           <div className="probability-donut">
             <ResponsiveContainer width="100%" height={208}>
@@ -242,7 +256,7 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
           <div className="section-heading">
             <div>
               <span className="eyebrow">Chance quality model</span>
-              <h3>Projected xG timeline</h3>
+              <h3>xG timeline</h3>
             </div>
             <div className="chart-legend">
               <span><i className="lime" />{homeTeam?.code ?? "HOME"}</span>
@@ -254,11 +268,11 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
               <AreaChart data={xgRace} margin={{ top: 14, right: 8, bottom: 0, left: -18 }}>
                 <defs>
                   <linearGradient id="homeGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#d9ff43" stopOpacity={0.28} />
+                    <stop offset="0%" stopColor="#d9ff43" stopOpacity={0.18} />
                     <stop offset="100%" stopColor="#d9ff43" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="awayGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#ff7043" stopOpacity={0.2} />
+                    <stop offset="0%" stopColor="#ff7043" stopOpacity={0.12} />
                     <stop offset="100%" stopColor="#ff7043" stopOpacity={0} />
                   </linearGradient>
                 </defs>
@@ -268,54 +282,32 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
                 <Tooltip
                   contentStyle={{ background: "#101b17", border: "1px solid #2a3933", borderRadius: 12 }}
                   labelFormatter={(value) => `Minute ${value}`}
+                  formatter={(value, name) => {
+                    const labels: Record<string, string> = {
+                      projHome: `Proj. ${homeTeam?.code ?? "HOME"}`,
+                      projAway: `Proj. ${awayTeam?.code ?? "AWAY"}`,
+                      actualHome: `Goals ${homeTeam?.code ?? "HOME"}`,
+                      actualAway: `Goals ${awayTeam?.code ?? "AWAY"}`,
+                    };
+                    const v = typeof value === "number" ? value.toFixed(2) : String(value ?? "");
+                    const k = String(name ?? "");
+                    return [v, labels[k] ?? k];
+                  }}
                 />
                 {match.status === "live" && <ReferenceLine x={match.minute} stroke="#f5f7f6" strokeDasharray="4 4" />}
-                <Area type="stepAfter" dataKey="home" stroke="#d9ff43" strokeWidth={2.5} fill="url(#homeGradient)" />
-                <Area type="stepAfter" dataKey="away" stroke="#ff7043" strokeWidth={2.5} fill="url(#awayGradient)" />
+                <Area type="monotone" dataKey="projHome" stroke="#d9ff43" strokeWidth={1.5} strokeDasharray="4 3" strokeOpacity={0.6} fill="url(#homeGradient)" />
+                <Area type="monotone" dataKey="projAway" stroke="#ff7043" strokeWidth={1.5} strokeDasharray="4 3" strokeOpacity={0.6} fill="url(#awayGradient)" />
+                <Area type="stepAfter" dataKey="actualHome" stroke="#d9ff43" strokeWidth={2.5} fill="none" />
+                <Area type="stepAfter" dataKey="actualAway" stroke="#ff7043" strokeWidth={2.5} fill="none" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
           <p className="model-note">
             <ScanLine size={14} />
-            Estimated from team strength and match state; the public feed does not include shot-location data.
+            Dashed lines: model projection. Solid steps: actual goals, spaced evenly across played time.
           </p>
         </article>
 
-        <article className="panel momentum-panel">
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">Model outlook</span>
-              <h3>Attacking territory</h3>
-            </div>
-          </div>
-          <div className="pitch-map">
-            <div className="pitch-line center" />
-            <div className="pitch-circle" />
-            <div className="pitch-box left" />
-            <div className="pitch-box right" />
-            {Array.from({ length: 16 }, (_, index) => {
-              const left = 7 + ((index * 23 + Number(match.id) * 7) % 87);
-              const top = 11 + ((index * 31 + Number(match.id) * 3) % 76);
-              const home = index % 3 !== 0;
-              return (
-                <span
-                  className={`pressure-dot ${home ? "home" : "away"}`}
-                  style={{ left: `${left}%`, top: `${top}%`, animationDelay: `${index * 90}ms` }}
-                  key={index}
-                />
-              );
-            })}
-            <div className="territory home" style={{ width: `${45 + probability.home * 20}%` }} />
-          </div>
-          <div className="pressure-stats">
-            <div><strong>{Math.round(48 + probability.home * 20)}%</strong><span>projected attacking share</span></div>
-            <div><strong>{Math.round(52 - probability.home * 20)}%</strong><span>projected attacking share</span></div>
-          </div>
-          <p className="model-note">
-            <ScanLine size={14} />
-            A modeled territory outlook, not live player-tracking data.
-          </p>
-        </article>
       </section>
     </div>
   );

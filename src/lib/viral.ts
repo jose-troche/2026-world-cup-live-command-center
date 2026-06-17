@@ -86,7 +86,7 @@ export type ViralContent = {
 };
 
 export type PlatformPost = {
-  platform: "x" | "bluesky" | "whatsapp" | "instagram" | "facebook" | "telegram";
+  platform: "x" | "bluesky" | "whatsapp";
   text: string;
   charCount: number;
   charLimit: number;
@@ -110,7 +110,6 @@ export type GoalImpactReport = {
   event: GoalEvent;
   swings: ChampionshipSwing[];
   platformPosts: PlatformPost[];
-  telegraphUrl: string | null;
   generatedAt: string;
 };
 
@@ -622,9 +621,6 @@ function formatPlatformPost(
     x: 280,
     bluesky: 300,
     whatsapp: 0,
-    instagram: 0,
-    facebook: 0,
-    telegram: 0,
   };
   const charLimit = limits[platform];
 
@@ -632,9 +628,6 @@ function formatPlatformPost(
     x: `https://twitter.com/intent/tweet?text=${encodeURIComponent(`${text}\n${url}`)}`,
     bluesky: `https://bsky.app/intent/compose?text=${encodeURIComponent(`${text}\n${url}`)}`,
     whatsapp: `https://wa.me/?text=${encodeURIComponent(`${text}\n${url}`)}`,
-    instagram: null,
-    facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`,
-    telegram: `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`,
   };
 
   if (platform === "x" && charLimit > 0) {
@@ -656,18 +649,7 @@ function formatPlatformPost(
     };
   }
 
-  if (platform === "instagram") {
-    const instagramText = `${text}\n.\n#WorldCup2026 #Touchline26 #Soccer #Football #WC2026`;
-    return {
-      platform,
-      text: instagramText,
-      charCount: instagramText.length,
-      charLimit: 0,
-      intentUrl: null,
-    };
-  }
-
-  const fullText = platform === "facebook" ? text : `${text}\n${url}`;
+  const fullText = `${text}\n${url}`;
   return {
     platform,
     text: fullText,
@@ -717,14 +699,13 @@ export function buildGoalImpactContent(
   const coreText = `${scoreLine}\n${oddsLine}\n${hashtags}`;
   const pageUrl = absoluteUrl(origin, `/matches/${slugify(`${event.homeName}-${event.awayName}`)}`)
 
-  const platforms: PlatformPost["platform"][] = ["x", "bluesky", "whatsapp", "instagram", "facebook", "telegram"];
+  const platforms: PlatformPost["platform"][] = ["x", "bluesky", "whatsapp"];
   const platformPosts = platforms.map((platform) => formatPlatformPost(coreText, pageUrl, platform));
 
   return {
     event,
     swings,
     platformPosts,
-    telegraphUrl: null,
     generatedAt: new Date().toISOString(),
   };
 }

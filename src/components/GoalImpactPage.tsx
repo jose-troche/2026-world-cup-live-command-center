@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { Flag } from "./Flag";
 import { Bell, Clipboard, Share2 } from "lucide-react";
 import { buildGoalImpactContent } from "../lib/viral";
 import type { GoalImpactReport, PlatformPost } from "../lib/viral";
@@ -95,48 +96,65 @@ function PlatformTabs({ report }: { report: GoalImpactReport }) {
   );
 }
 
-function RankingsShift({ championshipBefore, championshipAfter, teams }: {
-  championshipBefore: Map<string, number>;
-  championshipAfter: Map<string, number>;
+function GroupAdvancementShift({ advancementBefore, advancementAfter, event, teams, groups }: {
+  advancementBefore: Map<string, number>;
+  advancementAfter: Map<string, number>;
+  event: GoalWithImpact["event"];
   teams: TournamentData["teams"];
+  groups: TournamentData["groups"];
 }) {
   const teamById = new Map(teams.map((t) => [t.id, t]));
+  const teamByName = new Map(teams.map((t) => [t.name, t]));
 
-  const afterSorted = [...championshipAfter.entries()]
-    .filter(([id]) => teamById.has(id))
-    .sort((a, b) => b[1] - a[1]);
+  const homeTeam = teamByName.get(event.homeName);
+  const awayTeam = teamByName.get(event.awayName);
+  if (!homeTeam || !awayTeam) return null;
+
+  const group = groups.find((g) =>
+    g.standings.some((s) => s.teamId === homeTeam.id),
+  );
+  if (!group) return null;
 
   const beforeRankMap = new Map(
-    [...championshipBefore.entries()]
-      .filter(([id]) => teamById.has(id))
+    group.standings
+      .map((s) => [s.teamId, advancementBefore.get(s.teamId) ?? 0] as [string, number])
       .sort((a, b) => b[1] - a[1])
       .map(([id], i) => [id, i + 1]),
   );
 
-  const top10 = afterSorted.slice(0, 10).map(([id, afterPct], i) => {
-    const team = teamById.get(id)!;
-    const afterRank = i + 1;
-    const beforeRank = beforeRankMap.get(id) ?? afterRank;
-    const beforePct = championshipBefore.get(id) ?? afterPct;
-    return { team, afterRank, beforeRank, afterPct, beforePct };
-  });
+  const rows = group.standings
+    .map((s) => {
+      const team = teamById.get(s.teamId);
+      const afterPct = advancementAfter.get(s.teamId) ?? 0;
+      const beforePct = advancementBefore.get(s.teamId) ?? 0;
+      return { team, afterPct, beforePct };
+    })
+    .filter((r): r is { team: NonNullable<typeof r.team>; afterPct: number; beforePct: number } => Boolean(r.team))
+    .sort((a, b) => b.afterPct - a.afterPct)
+    .map((r, i) => ({
+      ...r,
+      afterRank: i + 1,
+      beforeRank: beforeRankMap.get(r.team.id) ?? i + 1,
+    }));
 
-  if (top10.every((r) => r.beforeRank === r.afterRank)) return null;
+  const isInMatch = (id: string) => id === homeTeam.id || id === awayTeam.id;
+  const anyChanged = rows.some((r) => r.beforeRank !== r.afterRank || r.beforePct !== r.afterPct);
+  if (!anyChanged) return null;
 
   return (
     <div className="rankings-shift">
-      <div className="swing-label rankings-shift-title">Title odds — top 10 ranking shift</div>
+      <div className="swing-label rankings-shift-title">Group {group.name} — advancement odds</div>
       <div className="rankings-shift-list">
-        {top10.map(({ team, afterRank, beforeRank, afterPct, beforePct }) => {
+        {rows.map(({ team, afterRank, beforeRank, afterPct, beforePct }) => {
           const moved = beforeRank - afterRank;
           const changed = moved !== 0;
           return (
-            <div key={team.id} className={`rankings-shift-row${changed ? " changed" : ""}`}>
+            <div key={team.id} className={`rankings-shift-row${changed ? " changed" : ""}${isInMatch(team.id) ? " in-match" : ""}`}>
               <span className="rs-rank">{afterRank}</span>
               <span className={`rs-move ${moved > 0 ? "up" : moved < 0 ? "down" : "same"}`}>
                 {moved > 0 ? `▲${moved}` : moved < 0 ? `▼${Math.abs(moved)}` : "—"}
               </span>
-              <span className="rs-flag">{team.flag}</span>
+              <Flag team={team} size="sm" />
               <span className="rs-name">{team.name}</span>
               <span className="rs-pct">
                 <span className="rs-before">{beforePct}%</span>
@@ -153,7 +171,7 @@ function RankingsShift({ championshipBefore, championshipAfter, teams }: {
   );
 }
 
-function GoalCard({ item, teams, origin }: { item: GoalWithImpact; teams: TournamentData["teams"]; origin: string }) {
+function GoalCard({ item, teams, groups, origin }: { item: GoalWithImpact; teams: TournamentData["teams"]; groups: TournamentData["groups"]; origin: string }) {
   const [expanded, setExpanded] = useState(true);
   const report = useMemo(
     () =>
@@ -235,10 +253,12 @@ function GoalCard({ item, teams, origin }: { item: GoalWithImpact; teams: Tourna
             ))}
           </div>
 
-          <RankingsShift
-            championshipBefore={item.championshipBefore}
-            championshipAfter={item.championshipAfter}
+          <GroupAdvancementShift
+            advancementBefore={item.advancementBefore}
+            advancementAfter={item.advancementAfter}
+            event={item.event}
             teams={teams}
+            groups={groups}
           />
 
           <PlatformTabs report={report} />
@@ -279,6 +299,7 @@ export function GoalImpactPage({ goalHistory, data }: { goalHistory: GoalWithImp
               key={`${item.event.matchId}-${item.event.detectedAt}`}
               item={item}
               teams={data.teams}
+              groups={data.groups}
               origin={origin}
             />
           ))}

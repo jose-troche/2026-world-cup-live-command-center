@@ -12,9 +12,29 @@ interface Fetcher {
   fetch(request: Request): Promise<Response>;
 }
 
+interface D1Result<T = Record<string, unknown>> {
+  results: T[];
+  success: boolean;
+  meta: Record<string, unknown>;
+}
+
+interface D1PreparedStatement {
+  bind(...values: unknown[]): D1PreparedStatement;
+  run(): Promise<D1Result>;
+  all<T = Record<string, unknown>>(): Promise<D1Result<T>>;
+  first<T = Record<string, unknown>>(): Promise<T | null>;
+}
+
+interface D1Database {
+  prepare(query: string): D1PreparedStatement;
+  exec(query: string): Promise<D1Result>;
+}
+
 type Env = {
   GOAL_HISTORY: KVNamespace;
   ASSETS: Fetcher;
+  ANALYTICS: D1Database;
+  ANALYTICS_KEY: string;
 };
 
 const MAX_GOAL_HISTORY = 10;
@@ -688,6 +708,92 @@ async function serveWithOgTags(env: Env, origin: string, cardImageUrl: string): 
   }
 }
 
+// ---------------------------------------------------------------------------
+// Analytics helpers
+// ---------------------------------------------------------------------------
+
+type CfProperties = {
+  country?: string;
+  city?: string;
+  region?: string;
+  timezone?: string;
+  asn?: number;
+  asOrganization?: string;
+};
+
+type CfRequest = Request & { cf?: CfProperties };
+
+const BOT_RE = /bot|crawler|spider|slurp|baiduspider|ia_archiver|facebookexternalhit|twitterbot|linkedinbot|whatsapp|Googlebot/i;
+
+function detectDevice(ua: string): string {
+  if (/mobile|android|iphone|ipod|blackberry|windows phone/i.test(ua)) return "mobile";
+  if (/ipad|tablet/i.test(ua)) return "tablet";
+  return "desktop";
+}
+
+function anonIp(ip: string): string {
+  // IPv4 — zero last octet; IPv6 — keep first 3 groups
+  if (ip.includes(".")) {
+    const parts = ip.split(".");
+    parts[3] = "0";
+    return parts.join(".");
+  }
+  const groups = ip.split(":");
+  return groups.slice(0, 3).join(":") + "::/48";
+}
+
+type TrackBody = {
+  path?: string;
+  referrer?: string;
+  screenW?: number;
+  tz?: string;
+};
+
+function sanitizePath(raw: string | undefined): string {
+  const p = (raw ?? "/").slice(0, 500);
+  return p.startsWith("/") ? p : "/";
+}
+
+function sanitizeReferrer(raw: string | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    return u.href.slice(0, 500);
+  } catch {
+    return null;
+  }
+}
+
+async function recordPageview(request: CfRequest, env: Env, body: TrackBody): Promise<void> {
+  const cf = request.cf ?? {};
+  const ua = request.headers.get("User-Agent") ?? "";
+  // CF-Connecting-IP is always injected by Cloudflare in production and cannot be spoofed
+  const ip = request.headers.get("CF-Connecting-IP") ?? "";
+  const referrer = sanitizeReferrer(body.referrer);
+  const path = sanitizePath(body.path);
+
+  await env.ANALYTICS.prepare(
+    `INSERT INTO pageviews (ts, path, referrer, ip_anon, country, city, region, timezone, asn, user_agent, device, bot, screen_w, client_tz)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    new Date().toISOString(),
+    path,
+    referrer,
+    ip ? anonIp(ip) : null,
+    cf.country ?? null,
+    cf.city ?? null,
+    cf.region ?? null,
+    cf.timezone ?? null,
+    cf.asn != null ? `AS${cf.asn} ${cf.asOrganization ?? ""}`.trim() : null,
+    ua.slice(0, 500) || null,
+    detectDevice(ua),
+    BOT_RE.test(ua) ? 1 : 0,
+    body.screenW ?? null,
+    body.tz ? body.tz.slice(0, 100) : null,
+  ).run();
+}
+
 export default {
   async fetch(request: Request, env: Env) {
     const url = new URL(request.url);
@@ -869,6 +975,51 @@ export default {
         url.origin,
       );
       return json(report, 200, "no-store");
+    }
+
+    if (url.pathname === "/api/track" && request.method === "POST") {
+      if (!env.ANALYTICS) return json({ ok: false, error: "analytics not configured" }, 503, "no-store");
+      try {
+        const body = (await request.json()) as TrackBody;
+        await recordPageview(request as CfRequest, env, body);
+      } catch {
+        // silently drop malformed payloads
+      }
+      return new Response(null, { status: 204 });
+    }
+
+    if (url.pathname === "/api/analytics" && request.method === "GET") {
+      if (!env.ANALYTICS) return json({ error: "analytics not configured" }, 503, "no-store");
+      // Key is sent in Authorization header to keep it out of URLs, browser history, and logs
+      const authHeader = request.headers.get("Authorization") ?? "";
+      const key = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+      if (!env.ANALYTICS_KEY || key !== env.ANALYTICS_KEY) {
+        return json({ error: "Unauthorized" }, 401, "no-store");
+      }
+      const parsedDays = parseInt(url.searchParams.get("days") ?? "30", 10);
+      const days = Math.min(isNaN(parsedDays) ? 30 : parsedDays, 90);
+      const since = new Date(Date.now() - days * 86_400_000).toISOString();
+
+      const [total, uniq, byPage, byCountry, byReferrer, byDevice, byDay] = await Promise.all([
+        env.ANALYTICS.prepare("SELECT COUNT(*) AS n FROM pageviews WHERE ts >= ? AND bot = 0").bind(since).first<{ n: number }>(),
+        env.ANALYTICS.prepare("SELECT COUNT(DISTINCT ip_anon) AS n FROM pageviews WHERE ts >= ? AND bot = 0").bind(since).first<{ n: number }>(),
+        env.ANALYTICS.prepare("SELECT path, COUNT(*) AS views FROM pageviews WHERE ts >= ? AND bot = 0 GROUP BY path ORDER BY views DESC LIMIT 20").bind(since).all(),
+        env.ANALYTICS.prepare("SELECT country, COUNT(*) AS views FROM pageviews WHERE ts >= ? AND bot = 0 GROUP BY country ORDER BY views DESC LIMIT 30").bind(since).all(),
+        env.ANALYTICS.prepare("SELECT referrer, COUNT(*) AS views FROM pageviews WHERE ts >= ? AND bot = 0 AND referrer IS NOT NULL GROUP BY referrer ORDER BY views DESC LIMIT 20").bind(since).all(),
+        env.ANALYTICS.prepare("SELECT device, COUNT(*) AS views FROM pageviews WHERE ts >= ? AND bot = 0 GROUP BY device ORDER BY views DESC").bind(since).all(),
+        env.ANALYTICS.prepare("SELECT substr(ts, 1, 10) AS day, COUNT(*) AS views, COUNT(DISTINCT ip_anon) AS uniq FROM pageviews WHERE ts >= ? AND bot = 0 GROUP BY day ORDER BY day").bind(since).all(),
+      ]);
+
+      return json({
+        days,
+        totalViews: total?.n ?? 0,
+        uniqueVisitors: uniq?.n ?? 0,
+        byPage: byPage.results,
+        byCountry: byCountry.results,
+        byReferrer: byReferrer.results,
+        byDevice: byDevice.results,
+        byDay: byDay.results,
+      }, 200, "no-store");
     }
 
     if (url.pathname === "/api/telegraph/publish" && request.method === "POST") {

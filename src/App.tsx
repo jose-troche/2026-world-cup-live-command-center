@@ -23,6 +23,7 @@ import { GoalImpactPage } from "./components/GoalImpactPage";
 import { TeamCompare } from "./components/TeamCompare";
 import { fallbackData } from "./data/fallback";
 import { useTournamentData } from "./hooks/useTournamentData";
+import { trackPageview } from "./lib/beacon";
 import { saveIntroPreference, shouldHideIntro } from "./lib/introPreference";
 import { buildViralContent, getContentPath, getMatchPath, getTeamPath } from "./lib/viral";
 import type { ContentStory } from "./lib/viral";
@@ -171,6 +172,10 @@ function App() {
   useEffect(() => {
     if (routeMatch) setSelectedMatchId(routeMatch.id);
   }, [routeMatch]);
+
+  useEffect(() => {
+    trackPageview(pathname);
+  }, [pathname]);
 
   useEffect(() => {
     const titlePrefix =

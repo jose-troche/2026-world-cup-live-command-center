@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -37,6 +37,17 @@ const emptyPicks = (): Picks => ({
   semis: [],
   final: [],
 });
+
+const STORAGE_KEY = "bracketlab-v1";
+
+function loadSaved(): { selections?: GroupSelections; picks?: Picks } {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
 
 const downstreamRounds: Record<RoundKey, RoundKey[]> = {
   round32: ["round16", "quarters", "semis", "final"],
@@ -127,8 +138,14 @@ export function BracketLab({ teams }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [teamSignature],
   );
-  const [selections, setSelections] = useState<GroupSelections>(defaultSelections);
-  const [picks, setPicks] = useState<Picks>(emptyPicks);
+  const [selections, setSelections] = useState<GroupSelections>(() => {
+    const saved = loadSaved();
+    if (saved.selections && Object.keys(saved.selections).length === Object.keys(defaultSelections).length) {
+      return saved.selections;
+    }
+    return defaultSelections;
+  });
+  const [picks, setPicks] = useState<Picks>(() => loadSaved().picks ?? emptyPicks());
   const [qualifiersOpen, setQualifiersOpen] = useState(true);
   const teamById = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams]);
   const groupTeams = useMemo(() => {
@@ -140,10 +157,21 @@ export function BracketLab({ teams }: Props) {
     );
   }, [selections, teams]);
 
+  const isFirstMount = useRef(true);
   useEffect(() => {
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      return;
+    }
     setSelections(defaultSelections);
     setPicks(emptyPicks());
   }, [defaultSelections]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ selections, picks }));
+    } catch {}
+  }, [selections, picks]);
 
   const qualifiedTeams = useMemo(
     () => getQualifiedTeams(teams, selections),
@@ -253,11 +281,7 @@ export function BracketLab({ teams }: Props) {
             <p>Each group sends its winner and runner-up. Select eight third-place teams to complete the field.</p>
           </div>
           <div className="qualifier-status">
-            <span className={fieldComplete ? "complete" : ""}>
-              {fieldComplete && <Check size={13} />}
-              {qualifiedTeams.length}/32 teams
-            </span>
-            <span>{thirdPlaceCount}/8 third-place</span>
+            <span>{qualifiersOpen ? "Hide groups" : "Show groups"}</span>
             <ChevronDown size={17} className={qualifiersOpen ? "open" : ""} />
           </div>
         </button>

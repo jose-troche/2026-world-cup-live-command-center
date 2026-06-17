@@ -2,6 +2,18 @@ import { describe, expect, it, vi } from "vitest";
 import { fallbackTeams } from "../src/data/fallback";
 import worker, { buildGroupStandings, normalizeEspnMatches } from "./index";
 
+const noopStmt = {
+  bind: (..._args: unknown[]) => noopStmt,
+  run: async () => ({ results: [], success: true, meta: {} }),
+  all: async () => ({ results: [], success: true, meta: {} }),
+  first: async () => null,
+};
+
+const noopD1 = {
+  prepare: (_q: string) => noopStmt,
+  exec: async (_q: string) => ({ results: [], success: true, meta: {} }),
+};
+
 const mockEnv = {
   GOAL_HISTORY: {
     get: async () => null,
@@ -10,6 +22,8 @@ const mockEnv = {
   ASSETS: {
     fetch: async () => new Response("", { status: 404 }),
   },
+  ANALYTICS: noopD1,
+  ANALYTICS_KEY: "test",
 } as Parameters<typeof worker.fetch>[1];
 
 describe("ESPN scoreboard normalization", () => {

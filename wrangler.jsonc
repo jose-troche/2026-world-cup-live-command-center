@@ -20,6 +20,13 @@
       "preview_id": "d57b3009858c4ec9af78b6561cdab4cb"
     }
   ],
+  "d1_databases": [
+    {
+      "binding": "ANALYTICS",
+      "database_name": "touchline26-analytics",
+      "database_id": "f5b4fd68-c927-415f-a6c1-25f0b0b21629"
+    }
+  ],
   "triggers": {
     "crons": ["*/15 * * * *", "0 11 * * *"]
   },

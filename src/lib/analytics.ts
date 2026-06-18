@@ -117,7 +117,7 @@ function distributeGoals(count: number, minutesPlayed: number): number[] {
 export function buildXgRace(match: Match) {
   const baseline = expectedGoals(match.homeName, match.awayName);
   const endMinute = match.status === "live" ? Math.max(match.minute, 15) : 90;
-  const minutesPlayed = match.status === "scheduled" ? 0 : Math.max(match.minute, 1);
+  const minutesPlayed = match.status === "scheduled" ? 0 : match.status === "finished" ? 90 : Math.max(match.minute, 1);
   const steps = Math.ceil(endMinute / 5);
 
   const homeGoalMinutes = distributeGoals(match.homeScore, minutesPlayed);
@@ -162,6 +162,60 @@ type SimulationRow = {
   goalsAgainst: number;
 };
 
+function simulateGroupStage(
+  group: Group,
+  matches: Match[],
+  teamById: Map<string, Team>,
+): SimulationRow[] {
+  const table = new Map<string, SimulationRow>();
+  group.standings.forEach((standing) => {
+    table.set(standing.teamId, {
+      id: standing.teamId,
+      points: standing.points,
+      goalsFor: standing.goalsFor,
+      goalsAgainst: standing.goalsAgainst,
+    });
+  });
+
+  matches
+    .filter(
+      (match) =>
+        match.group === group.name &&
+        match.type === "group" &&
+        match.status !== "finished" &&
+        table.has(match.homeId) &&
+        table.has(match.awayId),
+    )
+    .forEach((match) => {
+      const xg = expectedGoals(match.homeName, match.awayName);
+      const homeGoals = sampleGoals(xg.home);
+      const awayGoals = sampleGoals(xg.away);
+      const home = table.get(match.homeId)!;
+      const away = table.get(match.awayId)!;
+      home.goalsFor += homeGoals;
+      home.goalsAgainst += awayGoals;
+      away.goalsFor += awayGoals;
+      away.goalsAgainst += homeGoals;
+      if (homeGoals > awayGoals) home.points += 3;
+      else if (awayGoals > homeGoals) away.points += 3;
+      else {
+        home.points += 1;
+        away.points += 1;
+      }
+    });
+
+  return [...table.values()].sort((a, b) => {
+    const nameA = teamById.get(a.id)?.name ?? a.id;
+    const nameB = teamById.get(b.id)?.name ?? b.id;
+    return (
+      b.points - a.points ||
+      b.goalsFor - b.goalsAgainst - (a.goalsFor - a.goalsAgainst) ||
+      b.goalsFor - a.goalsFor ||
+      getRating(nameB) - getRating(nameA)
+    );
+  });
+}
+
 export function simulateAdvancement(
   groups: Group[],
   matches: Match[],
@@ -173,75 +227,28 @@ export function simulateAdvancement(
 
   for (let iteration = 0; iteration < iterations; iteration += 1) {
     const allThird: SimulationRow[] = [];
-    const groupResults = groups.map((group) => {
-      const table = new Map<string, SimulationRow>();
-      group.standings.forEach((standing) => {
-        table.set(standing.teamId, {
-          id: standing.teamId,
-          points: standing.points,
-          goalsFor: standing.goalsFor,
-          goalsAgainst: standing.goalsAgainst,
-        });
-      });
 
-      matches
-        .filter(
-          (match) =>
-            match.group === group.name &&
-            match.type === "group" &&
-            match.status !== "finished" &&
-            table.has(match.homeId) &&
-            table.has(match.awayId),
-        )
-        .forEach((match) => {
-          const xg = expectedGoals(match.homeName, match.awayName);
-          const homeGoals = sampleGoals(xg.home);
-          const awayGoals = sampleGoals(xg.away);
-          const home = table.get(match.homeId)!;
-          const away = table.get(match.awayId)!;
-          home.goalsFor += homeGoals;
-          home.goalsAgainst += awayGoals;
-          away.goalsFor += awayGoals;
-          away.goalsAgainst += homeGoals;
-          if (homeGoals > awayGoals) home.points += 3;
-          else if (awayGoals > homeGoals) away.points += 3;
-          else {
-            home.points += 1;
-            away.points += 1;
-          }
-        });
-
-      const ranked = [...table.values()].sort((a, b) => {
-        const teamA = teamById.get(a.id)?.name ?? a.id;
-        const teamB = teamById.get(b.id)?.name ?? b.id;
-        const result =
-          b.points - a.points ||
-          b.goalsFor - b.goalsAgainst - (a.goalsFor - a.goalsAgainst) ||
-          b.goalsFor - a.goalsFor;
-        return result || getRating(teamB) - getRating(teamA);
-      });
+    for (const group of groups) {
+      const ranked = simulateGroupStage(group, matches, teamById);
       ranked.slice(0, 2).forEach((row) => counts.set(row.id, (counts.get(row.id) ?? 0) + 1));
       if (ranked[2]) allThird.push(ranked[2]);
-      return ranked;
-    });
+    }
 
     allThird
       .sort((a, b) => {
-        const teamA = teamById.get(a.id)?.name ?? a.id;
-        const teamB = teamById.get(b.id)?.name ?? b.id;
+        const nameA = teamById.get(a.id)?.name ?? a.id;
+        const nameB = teamById.get(b.id)?.name ?? b.id;
         return (
           b.points - a.points ||
           b.goalsFor - b.goalsAgainst - (a.goalsFor - a.goalsAgainst) ||
           b.goalsFor - a.goalsFor ||
-          getRating(teamB) - getRating(teamA)
+          getRating(nameB) - getRating(nameA)
         );
       })
       .slice(0, 8)
       .forEach((row) => {
         counts.set(row.id, (counts.get(row.id) ?? 0) + 1);
       });
-
-    void groupResults;
   }
 
   return new Map(
@@ -269,54 +276,7 @@ export function simulateChampionship(
     const qualifiers: Team[] = [];
 
     for (const group of groups) {
-      const table = new Map<string, SimulationRow>();
-      group.standings.forEach((standing) => {
-        table.set(standing.teamId, {
-          id: standing.teamId,
-          points: standing.points,
-          goalsFor: standing.goalsFor,
-          goalsAgainst: standing.goalsAgainst,
-        });
-      });
-
-      matches
-        .filter(
-          (match) =>
-            match.group === group.name &&
-            match.type === "group" &&
-            match.status !== "finished" &&
-            table.has(match.homeId) &&
-            table.has(match.awayId),
-        )
-        .forEach((match) => {
-          const xg = expectedGoals(match.homeName, match.awayName);
-          const homeGoals = sampleGoals(xg.home);
-          const awayGoals = sampleGoals(xg.away);
-          const home = table.get(match.homeId)!;
-          const away = table.get(match.awayId)!;
-          home.goalsFor += homeGoals;
-          home.goalsAgainst += awayGoals;
-          away.goalsFor += awayGoals;
-          away.goalsAgainst += homeGoals;
-          if (homeGoals > awayGoals) home.points += 3;
-          else if (awayGoals > homeGoals) away.points += 3;
-          else {
-            home.points += 1;
-            away.points += 1;
-          }
-        });
-
-      const ranked = [...table.values()].sort((a, b) => {
-        const nameA = teamById.get(a.id)?.name ?? a.id;
-        const nameB = teamById.get(b.id)?.name ?? b.id;
-        return (
-          b.points - a.points ||
-          b.goalsFor - b.goalsAgainst - (a.goalsFor - a.goalsAgainst) ||
-          b.goalsFor - a.goalsFor ||
-          getRating(nameB) - getRating(nameA)
-        );
-      });
-
+      const ranked = simulateGroupStage(group, matches, teamById);
       ranked.slice(0, 2).forEach((row) => {
         const team = teamById.get(row.id);
         if (team) qualifiers.push(team);

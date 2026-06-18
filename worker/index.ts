@@ -122,7 +122,6 @@ type ExecutionContextLike = {
 
 const teamsByCode = new Map(fallbackTeams.map((team) => [team.code.toUpperCase(), team]));
 const teamsByName = new Map(fallbackTeams.map((team) => [normalizeName(team.name), team]));
-const teamsById = new Map(fallbackTeams.map((team) => [team.id, team]));
 
 function json(data: unknown, status = 200, cache = "public, max-age=15, s-maxage=15") {
   return new Response(JSON.stringify(data), {
@@ -332,6 +331,7 @@ export function normalizeEspnStadiums(payload: EspnScoreboard) {
 }
 
 export function buildGroupStandings(teams: Team[], matches: Match[]) {
+  const teamsById = new Map(teams.map((team) => [team.id, team]));
   const standings = new Map(
     teams.map((team) => [
       team.id,

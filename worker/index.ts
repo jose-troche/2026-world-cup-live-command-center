@@ -1000,12 +1000,6 @@ export default {
 
     if (url.pathname === "/api/analytics" && request.method === "GET") {
       if (!env.ANALYTICS) return json({ error: "analytics not configured" }, 503, "no-store");
-      // Key is sent in Authorization header to keep it out of URLs, browser history, and logs
-      const authHeader = request.headers.get("Authorization") ?? "";
-      const key = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-      if (!env.ANALYTICS_KEY || key !== env.ANALYTICS_KEY) {
-        return json({ error: "Unauthorized" }, 401, "no-store");
-      }
       const parsedDays = parseInt(url.searchParams.get("days") ?? "30", 10);
       const days = Math.min(isNaN(parsedDays) ? 30 : parsedDays, 90);
       const since = new Date(Date.now() - days * 86_400_000).toISOString();

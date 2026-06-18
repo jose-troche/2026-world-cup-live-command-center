@@ -75,3 +75,4 @@ For Git-based deployment, use:
 
 - `GET /api/tournament` returns the normalized tournament payload.
 - `GET /api/health` returns a lightweight service check.
+- `GET /api/analytics` returns pageview analytics (total views, unique visitors, breakdowns by page, country, referrer, device, and day). Accepts an optional `?days=N` query parameter (max 90, default 30). No authentication required.

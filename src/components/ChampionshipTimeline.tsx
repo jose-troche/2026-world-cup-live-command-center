@@ -19,6 +19,7 @@ type FilterMode = "top5" | "top10" | "custom";
 const TEAM_COLORS = [
   "#d9ff43", "#ff7043", "#f1b84b", "#4dd0e1", "#ce93d8",
   "#ef9a9a", "#80cbc4", "#fff176", "#ffab91", "#b0bec5",
+  "#a5d6a7",
 ];
 
 type Props = {
@@ -29,6 +30,7 @@ export function ChampionshipTimeline({ teams }: Props) {
   const { snapshots, loading } = useChampionshipTimeline();
   const [filterMode, setFilterMode] = useState<FilterMode>("top5");
   const [customTeamId, setCustomTeamId] = useState<string>("");
+  const [extraTeamId, setExtraTeamId] = useState<string>("");
 
   const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams]);
 
@@ -39,11 +41,16 @@ export function ChampionshipTimeline({ teams }: Props) {
   }, [snapshots]);
 
   const visibleTeamIds = useMemo<string[]>(() => {
-    if (filterMode === "top5") return latestProbs.slice(0, 5).map(([id]) => id);
-    if (filterMode === "top10") return latestProbs.slice(0, 10).map(([id]) => id);
-    if (customTeamId) return [customTeamId];
-    return latestProbs.slice(0, 5).map(([id]) => id);
-  }, [filterMode, customTeamId, latestProbs]);
+    if (filterMode === "custom") {
+      return customTeamId ? [customTeamId] : latestProbs.slice(0, 5).map(([id]) => id);
+    }
+    const base =
+      filterMode === "top10"
+        ? latestProbs.slice(0, 10).map(([id]) => id)
+        : latestProbs.slice(0, 5).map(([id]) => id);
+    if (extraTeamId && !base.includes(extraTeamId)) return [...base, extraTeamId];
+    return base;
+  }, [filterMode, customTeamId, extraTeamId, latestProbs]);
 
   // Build Recharts data: oldest snapshot first, columns are teamIds
   const chartData = useMemo(() => {
@@ -150,6 +157,25 @@ export function ChampionshipTimeline({ teams }: Props) {
                 </option>
               );
             })}
+          </select>
+        )}
+        {(filterMode === "top5" || filterMode === "top10") && (
+          <select
+            className="timeline-team-select"
+            value={extraTeamId}
+            onChange={(e) => setExtraTeamId(e.target.value)}
+          >
+            <option value="">+ Add a team…</option>
+            {latestProbs
+              .filter(([id]) => !visibleTeamIds.includes(id))
+              .map(([id]) => {
+                const team = teamById.get(id);
+                return (
+                  <option key={id} value={id}>
+                    {team?.name ?? id}
+                  </option>
+                );
+              })}
           </select>
         )}
       </div>

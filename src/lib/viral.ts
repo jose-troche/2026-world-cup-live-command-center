@@ -644,13 +644,16 @@ function formatPlatformPost(
 
   if (platform === "x" && charLimit > 0) {
     const full = `${text}\n${url}`;
-    if (full.length <= charLimit) {
-      return { platform, text: full, charCount: full.length, charLimit, intentUrl: intentUrls.x };
+    // Twitter shortens all URLs to t.co (always 23 chars), so measure using that length
+    const twitterCharCount = text.length + 1 + 23;
+    if (twitterCharCount <= charLimit) {
+      return { platform, text: full, charCount: twitterCharCount, charLimit, intentUrl: intentUrls.x };
     }
-    // Split into 2 threads: score line + odds line, then url + hashtags
+    // Genuinely over limit: split headline+score as hook tweet, rest as detail tweet
     const lines = text.split("\n");
-    const tweet1 = lines.slice(0, 2).join("\n");
-    const tweet2 = `${lines.slice(2).join("\n")}\n${url}`.trim();
+    const nonEmpty = lines.filter((l) => l.trim());
+    const tweet1 = nonEmpty.slice(0, 2).join("\n");
+    const tweet2 = `${nonEmpty.slice(2).join("\n\n")}\n${url}`.trim();
     return {
       platform,
       text: tweet1,

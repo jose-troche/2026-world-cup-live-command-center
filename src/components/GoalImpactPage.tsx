@@ -54,8 +54,8 @@ function PlatformTabs({ report }: { report: GoalImpactReport }) {
             <div className="thread-posts">
               {post.threads.map((tweet, i) => (
                 <div key={i} className="thread-tweet">
-                  <span className="thread-label">Tweet {i + 1}/{post.threads!.length}</span>
-                  <textarea readOnly value={tweet} rows={3} />
+                  <span className="thread-label">TWEET {i + 1}/{post.threads!.length}</span>
+                  <textarea readOnly value={tweet} rows={4} />
                   <div className="platform-post-actions">
                     <span className="char-counter">{tweet.length} / 280</span>
                     <button onClick={() => copyText(tweet)}>
@@ -65,8 +65,8 @@ function PlatformTabs({ report }: { report: GoalImpactReport }) {
                 </div>
               ))}
               {post.intentUrl && (
-                <a className="platform-share-btn" href={post.intentUrl} target="_blank" rel="noreferrer">
-                  <Share2 size={14} /> Post thread on X
+                <a href={post.intentUrl} target="_blank" rel="noreferrer">
+                  <Share2 size={13} /> Post thread on X
                 </a>
               )}
             </div>

@@ -671,6 +671,46 @@ function formatPlatformPost(
   };
 }
 
+function isoFlagEmoji(iso2: string): string {
+  if (!/^[A-Za-z]{2}$/.test(iso2)) return "";
+  const upper = iso2.toUpperCase();
+  return (
+    String.fromCodePoint(0x1f1e6 + upper.charCodeAt(0) - 65) +
+    String.fromCodePoint(0x1f1e6 + upper.charCodeAt(1) - 65)
+  );
+}
+
+function goalHeadline(scorerName: string, defenderName: string, minute: number, isEqualizer: boolean): string {
+  const gap = getRating(defenderName) - getRating(scorerName);
+  if (minute >= 85) return "⚡ LATE DRAMA ⚡";
+  if (isEqualizer && gap >= 4) return "😤 COMEBACK!";
+  if (isEqualizer) return "⚖️ EQUALIZER";
+  if (gap >= 8) return "🚨 UPSET ALERT 🚨";
+  if (gap >= 4) return "😲 SHOCK GOAL";
+  return "⚽ GOAL!";
+}
+
+function goalNarrative(
+  scorerName: string,
+  defenderName: string,
+  minute: number,
+  isEqualizer: boolean,
+  scoreAfter: { home: number; away: number },
+  scorerTeam: "home" | "away",
+): string {
+  const gap = getRating(defenderName) - getRating(scorerName);
+  const scorerScore = scorerTeam === "home" ? scoreAfter.home : scoreAfter.away;
+  const defenderScore = scorerTeam === "home" ? scoreAfter.away : scoreAfter.home;
+  if (minute >= 85) return `${scorerName} score in stoppage time — what a moment to choose!`;
+  if (isEqualizer && gap >= 4) return `${scorerName} fight back against the favorites. Far from over!`;
+  if (isEqualizer) return `${scorerName} level it up. Far from over!`;
+  if (gap >= 8) return `${scorerName} just stunned one of the tournament favorites. Biggest shock so far?`;
+  if (gap >= 4) return `${scorerName} with a surprise strike! ${defenderName} weren't expected to struggle here.`;
+  if (scorerScore === 1 && defenderScore === 0) return `${scorerName} break the deadlock.`;
+  if (scorerScore - defenderScore >= 2) return `${scorerName} are pulling away.`;
+  return `${scorerName} extend the lead.`;
+}
+
 export function buildGoalImpactContent(
   event: GoalEvent,
   advancementBefore: Map<string, number>,
@@ -698,17 +738,50 @@ export function buildGoalImpactContent(
       championshipDelta: (championshipAfter.get(team.id) ?? 0) - (championshipBefore.get(team.id) ?? 0),
     }));
 
-  const scoreLine = `GOAL! ${event.homeName} ${event.scoreAfter.home}-${event.scoreAfter.away} ${event.awayName} (${event.minute}')`;
+  const scorerName = event.scorerTeam === "home" ? event.homeName : event.awayName;
+  const defenderName = event.scorerTeam === "home" ? event.awayName : event.homeName;
+  const homeFlag = homeTeam ? isoFlagEmoji(homeTeam.iso2) : "";
+  const awayFlag = awayTeam ? isoFlagEmoji(awayTeam.iso2) : "";
+
+  const isEqualizer =
+    event.scorerTeam === "home"
+      ? event.scoreAfter.home === event.scoreAfter.away && event.scoreBefore.home < event.scoreBefore.away
+      : event.scoreAfter.home === event.scoreAfter.away && event.scoreBefore.away < event.scoreBefore.home;
+
+  const headline = goalHeadline(scorerName, defenderName, event.minute, isEqualizer);
+  const narrative = goalNarrative(scorerName, defenderName, event.minute, isEqualizer, event.scoreAfter, event.scorerTeam);
+
   const homeSwing = swings.find((s) => s.teamName === event.homeName);
   const awaySwing = swings.find((s) => s.teamName === event.awayName);
 
-  const oddsLine = [
-    homeSwing && `${event.homeName}: title ${homeSwing.championshipBefore}%→${homeSwing.championshipAfter}% (${homeSwing.championshipDelta >= 0 ? "+" : ""}${homeSwing.championshipDelta}%)`,
-    awaySwing && `${event.awayName}: title ${awaySwing.championshipBefore}%→${awaySwing.championshipAfter}% (${awaySwing.championshipDelta >= 0 ? "+" : ""}${awaySwing.championshipDelta}%)`,
-  ].filter(Boolean).join(" | ");
+  const definedSwings = [homeSwing, awaySwing].filter((s): s is ChampionshipSwing => s !== undefined);
 
-  const coreText = `${scoreLine}\n${oddsLine}\n${SHARE_HASHTAGS}`;
-  const pageUrl = absoluteUrl(origin, `/matches/${slugify(`${event.homeName}-${event.awayName}`)}`)
+  const advParts = definedSwings
+    .filter((s) => Math.abs(s.advancementDelta) >= 2)
+    .map((s) => {
+      const flag = s.teamName === event.homeName ? homeFlag : awayFlag;
+      const sign = s.advancementDelta >= 0 ? "+" : "";
+      const arrow = s.advancementDelta >= 0 ? "📈" : "📉";
+      return `${flag} ${sign}${s.advancementDelta}pp ${arrow}`.trim();
+    });
+  const advanceLine = advParts.length ? `Advancement: ${advParts.join(" | ")}` : "";
+
+  const biggestDrop = definedSwings
+    .filter((s) => s.championshipDelta <= -2)
+    .sort((a, b) => a.championshipDelta - b.championshipDelta)[0];
+  const titleLine = biggestDrop
+    ? `${biggestDrop.teamName} title odds: ${biggestDrop.championshipBefore}%→${biggestDrop.championshipAfter}% 📉`
+    : "";
+
+  const homeCode = homeTeam?.code ?? "";
+  const awayCode = awayTeam?.code ?? "";
+  const matchTag = homeCode && awayCode ? `#${homeCode}vs${awayCode}` : "";
+  const hashtags = matchTag ? `${matchTag} ${SHARE_HASHTAGS}` : SHARE_HASHTAGS;
+
+  const scoreLine = `${headline}\n${homeFlag ? homeFlag + " " : ""}${event.homeName} ${event.scoreAfter.home}-${event.scoreAfter.away} ${event.awayName}${awayFlag ? " " + awayFlag : ""} (${event.minute}')`;
+  const statsLines = [advanceLine, titleLine].filter(Boolean).join("\n");
+  const coreText = [scoreLine, narrative, statsLines, hashtags].filter(Boolean).join("\n\n");
+  const pageUrl = absoluteUrl(origin, `/matches/${slugify(`${event.homeName}-${event.awayName}`)}`);
 
   const platforms: PlatformPost["platform"][] = ["x", "bluesky", "reddit", "linkedin"];
   const platformPosts = platforms.map((platform) => formatPlatformPost(coreText, pageUrl, platform));

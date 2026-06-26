@@ -4,7 +4,7 @@ import { fallbackTeams } from "../data/fallback";
 import {
   buildDefaultGroupSelections,
   buildBracketMatchMetas,
-  buildR32DisplayTeams,
+  buildR32DisplaySlots,
   formatBracketDate,
   getQualifiedTeams,
   isGroupComplete,
@@ -208,12 +208,12 @@ describe("resolveKnockoutTeam", () => {
   });
 });
 
-describe("buildR32DisplayTeams", () => {
+describe("buildR32DisplaySlots", () => {
   const makeTeam = (id: string, group: string): Team => ({
     id, name: `Team ${id}`, code: id.toUpperCase(), iso2: "US", flag: "", group
   });
 
-  it("returns 32 items (2 per each of 16 R32 matches)", () => {
+  it("returns 32 slots (2 per each of 16 R32 matches)", () => {
     const r32Teams = [makeTeam("a1", "A"), makeTeam("a2", "A"), makeTeam("b1", "B"), makeTeam("b2", "B")];
     const teamById = new Map(r32Teams.map((t) => [t.id, t]));
     const r32Matches: Match[] = Array.from({ length: 16 }, (_, i) => ({
@@ -235,8 +235,11 @@ describe("buildR32DisplayTeams", () => {
     }));
 
     const selections = { A: { winnerId: "a1", runnerUpId: "a2", thirdId: "a1", thirdAdvances: false } };
-    const result = buildR32DisplayTeams([...r32Matches], selections, teamById);
+    const result = buildR32DisplaySlots([...r32Matches], selections, teamById, []);
     expect(result).toHaveLength(32);
+    result.forEach((slot) => {
+      expect(slot).toHaveProperty("projected");
+    });
   });
 });
 

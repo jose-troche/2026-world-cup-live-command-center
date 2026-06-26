@@ -32,15 +32,16 @@ export type BracketMatchMetas = {
   final: KnockoutMatchMeta[];
 };
 
-// The ESPN Round of 32 matches (sorted by date, 0-indexed) define these pairings in R16:
-//   R16-1: R32[0] vs R32[2],   R16-2: R32[1] vs R32[4],
-//   R16-3: R32[3] vs R32[5],   R16-4: R32[6] vs R32[7],
-//   R16-5: R32[10] vs R32[11], R16-6: R32[8] vs R32[9],
-//   R16-7: R32[13] vs R32[15], R16-8: R32[12] vs R32[14]
+// The ESPN Round of 32 matches (sorted by date, 0-indexed) define these pairings in R16.
+// Note: date order ≠ FIFA bracket position order (e.g. Brazil/Japan = M76 but 2nd by date).
+//   R16-1 (Houston):      R32[0] vs R32[3],   R16-2 (Philadelphia): R32[2] vs R32[5],
+//   R16-3 (NY/NJ):        R32[1] vs R32[4],   R16-4 (Mexico City):  R32[6] vs R32[7],
+//   R16-5 (Dallas):       R32[11] vs R32[10], R16-6 (Seattle):       R32[9] vs R32[8],
+//   R16-7 (Atlanta):      R32[14] vs R32[13], R16-8 (Vancouver):     R32[12] vs R32[15]
 //
-// We reorder R32 display so sequential pairing produces R16, QF, SF, Final
-// in the correct ESPN bracket order (QF-1=R16-1+R16-2, QF-2=R16-5+R16-6, etc.)
-export const R32_DISPLAY_ORDER = [0, 2, 1, 4, 10, 11, 8, 9, 3, 5, 6, 7, 13, 15, 12, 14];
+// QF bracket order: QF-1=R16-1+R16-2 (Houston+Philadelphia), QF-2=R16-5+R16-6 (Dallas+Seattle),
+//   QF-3=R16-3+R16-4 (NY/NJ+Mexico), QF-4=R16-7+R16-8 (Atlanta+Vancouver)
+export const R32_DISPLAY_ORDER = [0, 3, 2, 5, 11, 10, 9, 8, 1, 4, 6, 7, 14, 13, 12, 15];
 
 // ESPN R16 matches (sorted by date, 0-indexed) produce this display ordering:
 // display[0]=R16-1, display[1]=R16-2, display[2]=R16-5, display[3]=R16-6,
@@ -197,47 +198,106 @@ export function isGroupComplete(groupName: string, groups: Group[]): boolean {
   return group.standings.every((s) => s.played >= 3);
 }
 
-// Parses "Group A Winner" / "Group B 2nd Place" labels and resolves to a team ID,
-// but ONLY when that group has fully completed all its matches.
-// Third-place slots ("Third Place Group A/B/C/D/F") are never resolved here —
-// they require FIFA's post-group-stage selection; ESPN fills them directly once confirmed.
+// Resolves a group-position label to a team ID.
+// `strict=true` (default for display): only resolves when the group is fully complete.
+// `strict=false` (for simulation): resolves from current standings regardless of completion.
+// Third-place slots are always left unresolved here — ESPN fills them directly once confirmed.
 function resolveGroupPositionId(
   label: string,
   selections: GroupSelections,
   groups: Group[],
+  strict: boolean,
 ): string | undefined {
   const winnerMatch = /^Group\s+([A-L])\s+(?:Winner|1st\s+Place)$/i.exec(label);
   if (winnerMatch) {
     const g = winnerMatch[1].toUpperCase();
-    return isGroupComplete(g, groups) ? selections[g]?.winnerId : undefined;
+    if (!strict || isGroupComplete(g, groups)) return selections[g]?.winnerId;
+    return undefined;
   }
 
   const runnerUpMatch = /^Group\s+([A-L])\s+(?:2nd\s+Place|Runner.?[Uu]p)$/i.exec(label);
   if (runnerUpMatch) {
     const g = runnerUpMatch[1].toUpperCase();
-    return isGroupComplete(g, groups) ? selections[g]?.runnerUpId : undefined;
+    if (!strict || isGroupComplete(g, groups)) return selections[g]?.runnerUpId;
+    return undefined;
   }
 
-  // Third-place slots are left as placeholders until ESPN confirms them directly.
+  // Third-place slots: only resolve for simulation (not for display), using thirdAdvances flag.
+  const thirdMatch = /^Third\s+Place\s+Group\s+([A-L\/]+)$/i.exec(label);
+  if (thirdMatch && !strict) {
+    const gs = thirdMatch[1].split("/").map((g) => g.trim().toUpperCase());
+    const advancing = gs.find((g) => selections[g]?.thirdAdvances);
+    if (advancing) return selections[advancing].thirdId;
+  }
+
   return undefined;
 }
 
+// Resolves a knockout match slot to a Team.
+// For DISPLAY: strict=true — only shows confirmed teams (group complete or ESPN direct).
+// For SIMULATION: strict=false — uses current standings for all groups.
 export function resolveKnockoutTeam(
   matchTeamId: string,
   matchTeamName: string,
   selections: GroupSelections,
   teamById: Map<string, Team>,
   groups: Group[] = [],
+  strict = true,
 ): Team | undefined {
-  // ESPN has already confirmed this team — group is done.
   const direct = teamById.get(matchTeamId);
   if (direct) return direct;
 
-  // Resolve group-position placeholder, but only when the group is fully complete.
-  const resolvedId = resolveGroupPositionId(matchTeamName, selections, groups);
+  const resolvedId = resolveGroupPositionId(matchTeamName, selections, groups, strict);
   if (resolvedId) return teamById.get(resolvedId);
 
   return undefined;
+}
+
+export type R32Slot = { team: Team | undefined; projected: boolean };
+
+// Builds the 32-slot R32 display array in draw order.
+// Confirmed slots (ESPN-direct or fully-complete group) → projected: false.
+// Projected slots (group in progress, current standings leader) → projected: true.
+// Truly unknown slots (third-place not yet announced, no resolution) → team: undefined.
+export function buildR32DisplaySlots(
+  matches: Match[],
+  selections: GroupSelections,
+  teamById: Map<string, Team>,
+  groups: Group[],
+): R32Slot[] {
+  const r32Sorted = sortByDate(matches.filter((m) => m.type === "round-of-32"));
+  return R32_DISPLAY_ORDER.flatMap((i) => {
+    const match = r32Sorted[i];
+    if (!match) return [{ team: undefined, projected: false }, { team: undefined, projected: false }];
+
+    const resolveSlot = (id: string, name: string): R32Slot => {
+      // ESPN-confirmed or standings-confirmed (group complete)
+      const confirmed = resolveKnockoutTeam(id, name, selections, teamById, groups, true);
+      if (confirmed) return { team: confirmed, projected: false };
+      // Projected from current (incomplete) standings
+      const projected = resolveKnockoutTeam(id, name, selections, teamById, groups, false);
+      return { team: projected, projected: true };
+    };
+
+    return [resolveSlot(match.homeId, match.homeName), resolveSlot(match.awayId, match.awayName)];
+  });
+}
+
+// Builds a flat 32-team array for simulation — always resolves all slots.
+export function buildR32SimTeams(
+  matches: Match[],
+  selections: GroupSelections,
+  teamById: Map<string, Team>,
+): Array<Team | undefined> {
+  const r32Sorted = sortByDate(matches.filter((m) => m.type === "round-of-32"));
+  return R32_DISPLAY_ORDER.flatMap((i) => {
+    const match = r32Sorted[i];
+    if (!match) return [undefined, undefined];
+    return [
+      resolveKnockoutTeam(match.homeId, match.homeName, selections, teamById, [], false),
+      resolveKnockoutTeam(match.awayId, match.awayName, selections, teamById, [], false),
+    ];
+  });
 }
 
 function sortByDate(matches: Match[]) {
@@ -284,24 +344,6 @@ export function buildBracketMatchMetas(matches: Match[], stadiums: Stadium[]): B
 
 // Build the flat R32 team display array (32 teams, in draw order)
 // by resolving each slot from ESPN match data and group selections.
-// A team only appears when ESPN has confirmed it (group is done); otherwise the
-// slot stays undefined and shows its label as a placeholder.
-export function buildR32DisplayTeams(
-  matches: Match[],
-  selections: GroupSelections,
-  teamById: Map<string, Team>,
-  groups: Group[] = [],
-): Array<Team | undefined> {
-  const r32Sorted = sortByDate(matches.filter((m) => m.type === "round-of-32"));
-  return R32_DISPLAY_ORDER.flatMap((i) => {
-    const match = r32Sorted[i];
-    if (!match) return [undefined, undefined];
-    return [
-      resolveKnockoutTeam(match.homeId, match.homeName, selections, teamById, groups),
-      resolveKnockoutTeam(match.awayId, match.awayName, selections, teamById, groups),
-    ];
-  });
-}
 
 // Pre-fill picks for any knockout rounds that are already finished.
 export function prefillPicksFromMatches(

@@ -258,8 +258,10 @@ function getLocalDate(value?: string) {
 function getGroup(competition: EspnCompetition, homeTeam?: Team, awayTeam?: Team) {
   const noteMatch = /Group\s+([A-L])/i.exec(competition.altGameNote ?? "");
   if (noteMatch) return noteMatch[1].toUpperCase();
+  // Both teams in the same group → group stage match.
+  // If teams are from different groups (or one is unresolved), it's a knockout match.
   if (homeTeam?.group && homeTeam.group === awayTeam?.group) return homeTeam.group;
-  return homeTeam?.group ?? awayTeam?.group ?? "";
+  return "";
 }
 
 export function normalizeEspnMatches(payload: EspnScoreboard) {

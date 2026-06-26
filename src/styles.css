@@ -2677,6 +2677,22 @@ i.coral {
   font-size: 9px;
 }
 
+/* Projected team — group not yet finished, showing current standings leader */
+.bracket-pair button.projected {
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.bracket-pair button.projected:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.bracket-pair button.projected .proj-tag {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+}
+
 .bracket-team-placeholder {
   min-height: 48px;
   display: flex;

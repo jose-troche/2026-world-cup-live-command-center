@@ -11,18 +11,19 @@ import { getRating, simulateKnockout } from "../lib/analytics";
 import {
   buildBracketMatchMetas,
   buildDefaultGroupSelections,
-  buildR32DisplayTeams,
+  buildR32DisplaySlots,
+  buildR32SimTeams,
   formatBracketDate,
   getQualifiedTeams,
-  pairTeams,
   prefillPicksFromMatches,
-  R16_DISPLAY_ORDER,
+  R32_DISPLAY_ORDER,
   rankTeams,
   resolveKnockoutTeam,
   updateGroupRole,
   type GroupRole,
   type GroupSelections,
   type KnockoutMatchMeta,
+  type R32Slot,
 } from "../lib/bracket";
 import type { Group, Match, Stadium, Team } from "../types";
 import { Flag } from "./Flag";
@@ -46,8 +47,7 @@ const emptyPicks = (): Picks => ({
   final: [],
 });
 
-// v2: bump version when bracket structure changes (invalidates old localStorage)
-const STORAGE_KEY = "bracketlab-v2";
+const STORAGE_KEY = "bracketlab-v3";
 
 function loadSaved(): { selections?: GroupSelections; picks?: Picks } {
   try {
@@ -66,44 +66,60 @@ const downstreamRounds: Record<RoundKey, RoundKey[]> = {
   final: [],
 };
 
-function formatMatchMeta(meta: KnockoutMatchMeta | undefined, venueName?: string): string {
+function formatMatchMeta(meta: KnockoutMatchMeta | undefined): string {
   if (!meta) return "";
-  const venue = venueName ?? meta.venueName;
   const date = formatBracketDate(meta.localDate);
-  if (venue) return `${date} · ${venue}`;
-  return date;
+  return meta.venueName ? `${date} · ${meta.venueName}` : date;
 }
 
+type TeamSlot = { team?: Team; projected?: boolean };
+
 type PairProps = {
-  teams: Array<Team | undefined>;
-  labels?: [string, string];
+  slots: [TeamSlot, TeamSlot];
+  label0?: string;
+  label1?: string;
   winnerId?: string;
   meta?: KnockoutMatchMeta;
   onPick?: (team: Team) => void;
 };
 
-function Pair({ teams, labels, winnerId, meta, onPick }: PairProps) {
+function Pair({ slots, label0, label1, winnerId, meta, onPick }: PairProps) {
   const metaText = meta ? formatMatchMeta(meta) : "";
   return (
     <div className="bracket-pair">
       {metaText && <span className="bracket-match-meta">{metaText}</span>}
-      {[0, 1].map((slot) => {
-        const team = teams[slot];
-        const label = labels?.[slot];
-        return team ? (
-          <button
-            className={winnerId === team.id ? "winner" : ""}
-            onClick={() => onPick?.(team)}
-            key={team.id}
-            disabled={!onPick}
-            title={`${team.name} · Model rating ${getRating(team.name)}`}
-          >
-            <Flag team={team} size="sm" />
-            <span>{team.name}</span>
-            <b>{getRating(team.name)}</b>
-          </button>
-        ) : (
-          <div className="bracket-team-placeholder" key={`tbd-${slot}`}>
+      {([0, 1] as const).map((i) => {
+        const { team, projected } = slots[i];
+        const label = i === 0 ? label0 : label1;
+        if (team) {
+          return (
+            <button
+              key={team.id}
+              className={[
+                winnerId === team.id ? "winner" : "",
+                projected ? "projected" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              onClick={() => onPick?.(team)}
+              disabled={!onPick}
+              title={
+                projected
+                  ? `${team.name} · current leader (not yet confirmed)`
+                  : `${team.name} · Model rating ${getRating(team.name)}`
+              }
+            >
+              <Flag team={team} size="sm" />
+              <span>
+                {team.name}
+                {projected && <em className="proj-tag"> ~</em>}
+              </span>
+              <b>{getRating(team.name)}</b>
+            </button>
+          );
+        }
+        return (
+          <div className="bracket-team-placeholder" key={`tbd-${i}`}>
             <span>{label ?? "TBD"}</span>
           </div>
         );
@@ -114,7 +130,7 @@ function Pair({ teams, labels, winnerId, meta, onPick }: PairProps) {
 
 type RoundProps = {
   label: string;
-  teams: Array<Team | undefined>;
+  slots: Array<TeamSlot | undefined>;
   labels?: string[];
   matchCount: number;
   picks: string[];
@@ -125,7 +141,7 @@ type RoundProps = {
 
 function BracketRound({
   label,
-  teams,
+  slots,
   labels,
   matchCount,
   picks,
@@ -133,31 +149,42 @@ function BracketRound({
   onPick,
   className = "",
 }: RoundProps) {
-  const matchups = Array.from({ length: matchCount }, (_, index) =>
-    teams.slice(index * 2, index * 2 + 2),
+  const pairs = Array.from({ length: matchCount }, (_, index) =>
+    slots.slice(index * 2, index * 2 + 2),
   );
   return (
     <div className={`bracket-column ${className}`}>
       <span className="round-label">{label}</span>
       <div className="round-matchups">
-        {matchups.map((pair, index) => (
-          <Pair
-            teams={pair}
-            labels={[labels?.[index * 2] ?? "TBD", labels?.[index * 2 + 1] ?? "TBD"]}
-            winnerId={picks[index]}
-            meta={metas[index]}
-            onPick={pair.filter(Boolean).length === 2 ? (team) => onPick(index, team) : undefined}
-            key={`${label}-${index}`}
-          />
-        ))}
+        {pairs.map((pair, index) => {
+          const s0: TeamSlot = pair[0] ?? {};
+          const s1: TeamSlot = pair[1] ?? {};
+          const canPick = Boolean(s0.team) && Boolean(s1.team);
+          return (
+            <Pair
+              key={`${label}-${index}`}
+              slots={[s0, s1]}
+              label0={labels?.[index * 2] ?? "TBD"}
+              label1={labels?.[index * 2 + 1] ?? "TBD"}
+              winnerId={picks[index]}
+              meta={metas[index]}
+              onPick={canPick ? (team) => onPick(index, team) : undefined}
+            />
+          );
+        })}
       </div>
     </div>
   );
 }
 
+// Converts a plain Team | undefined to a TeamSlot (never projected for non-R32 rounds)
+function toSlot(team: Team | undefined): TeamSlot {
+  return { team, projected: false };
+}
+
 export function BracketLab({ teams, groups, matches, stadiums }: Props) {
   const teamSignature = teams
-    .map((team) => `${team.id}:${team.group}:${team.name}`)
+    .map((t) => `${t.id}:${t.group}:${t.name}`)
     .sort()
     .join("|");
 
@@ -171,7 +198,7 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
     [teamSignature, groupSignature],
   );
 
-  const teamById = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams]);
+  const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams]);
 
   const knockoutMatches = useMemo(
     () => matches.filter((m) => m.type !== "group"),
@@ -192,14 +219,16 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
   const [picks, setPicks] = useState<Picks>(() => loadSaved().picks ?? emptyPicks());
   const [qualifiersOpen, setQualifiersOpen] = useState(true);
 
-  const groupTeams = useMemo(() => {
-    return Object.fromEntries(
-      Object.keys(selections).map((group) => [
-        group,
-        rankTeams(teams.filter((team) => team.group === group)),
-      ]),
-    );
-  }, [selections, teams]);
+  const groupTeams = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.keys(selections).map((group) => [
+          group,
+          rankTeams(teams.filter((t) => t.group === group)),
+        ]),
+      ),
+    [selections, teams],
+  );
 
   const isFirstMount = useRef(true);
   useEffect(() => {
@@ -222,31 +251,30 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
     [selections, teams],
   );
 
-  const thirdPlaceCount = Object.values(selections).filter(
-    (selection) => selection.thirdAdvances,
-  ).length;
+  const thirdPlaceCount = Object.values(selections).filter((s) => s.thirdAdvances).length;
   const fieldComplete = qualifiedTeams.length === 32 && thirdPlaceCount === 8;
 
-  // Build the R32 display teams from ESPN knockout match data (real draw order).
-  // Teams only appear when ESPN has confirmed them (group is fully done).
-  const r32DisplayTeams = useMemo(
-    () => buildR32DisplayTeams(knockoutMatches, selections, teamById, groups),
+  // R32 display slots — confirmed teams shown normally, projected shown with ~ indicator.
+  const r32Slots: R32Slot[] = useMemo(
+    () => buildR32DisplaySlots(knockoutMatches, selections, teamById, groups),
     [knockoutMatches, selections, teamById, groups],
   );
 
-  // Labels for placeholder slots — show group position text (e.g. "Group I Winner")
-  // when the team isn't confirmed yet, or the team name when confirmed.
+  // Labels for slots that have no team at all (truly unknown, e.g. third-place TBD).
   const r32Labels = useMemo(() => {
     const r32Sorted = [...knockoutMatches.filter((m) => m.type === "round-of-32")].sort(
-      (a, b) => (a.utcDate ? Date.parse(a.utcDate) : 0) - (b.utcDate ? Date.parse(b.utcDate) : 0),
+      (a, b) =>
+        (a.utcDate ? Date.parse(a.utcDate) : 0) - (b.utcDate ? Date.parse(b.utcDate) : 0),
     );
-    return (
-      [0, 2, 1, 4, 10, 11, 8, 9, 3, 5, 6, 7, 13, 15, 12, 14] as const
-    ).flatMap((i) => {
+    return R32_DISPLAY_ORDER.flatMap((i) => {
       const m = r32Sorted[i];
       if (!m) return ["TBD", "TBD"];
-      const homeResolved = resolveKnockoutTeam(m.homeId, m.homeName, selections, teamById, groups);
-      const awayResolved = resolveKnockoutTeam(m.awayId, m.awayName, selections, teamById, groups);
+      const homeResolved = resolveKnockoutTeam(
+        m.homeId, m.homeName, selections, teamById, groups,
+      );
+      const awayResolved = resolveKnockoutTeam(
+        m.awayId, m.awayName, selections, teamById, groups,
+      );
       return [
         homeResolved ? homeResolved.name : m.homeName,
         awayResolved ? awayResolved.name : m.awayName,
@@ -254,44 +282,35 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
     });
   }, [knockoutMatches, selections, teamById, groups]);
 
-  // Match metadata (date + venue) for each bracket round, in display order
+  // Match metadata (date + venue) for each bracket round.
   const bracketMetas = useMemo(
     () => buildBracketMatchMetas(knockoutMatches, stadiums),
     [knockoutMatches, stadiums],
   );
 
-  // When R32 data is available from ESPN, fall back to seeded teams for sim
-  const hasR32Data = r32DisplayTeams.some(Boolean);
-  // Flat 32-team array for simulation — use ESPN draw order when available
-  const r32SimTeams: Team[] = useMemo(() => {
-    if (hasR32Data) {
-      // Replace undefined slots with teams from qualified list so simulation can run
-      const qualified = [...qualifiedTeams];
-      const used = new Set(r32DisplayTeams.filter(Boolean).map((t) => t!.id));
-      const unplaced = qualified.filter((t) => !used.has(t.id));
-      let unplacedIdx = 0;
-      return r32DisplayTeams.map((t) => t ?? unplaced[unplacedIdx++]).filter((t): t is Team => Boolean(t));
-    }
-    // Fall back to model seeding when no ESPN draw data available
-    return qualifiedTeams;
-  }, [hasR32Data, r32DisplayTeams, qualifiedTeams]);
+  // R16 teams flow directly from R32 picks in sequential display order.
+  // R32_DISPLAY_ORDER already arranges R32 so sequential pairing gives the correct R16 matchups.
+  const round16Slots = useMemo(
+    () =>
+      Array.from({ length: 16 }, (_, i) => toSlot(teamById.get(picks.round32[i]))),
+    [picks.round32, teamById],
+  );
 
-  const getTeamsFromPicks = (round: RoundKey, slots: number) =>
-    Array.from({ length: slots }, (_, index) => teamById.get(picks[round][index]));
+  const quarterSlots = useMemo(
+    () => Array.from({ length: 8 }, (_, i) => toSlot(teamById.get(picks.round16[i]))),
+    [picks.round16, teamById],
+  );
 
-  // R16 teams: reorder by R16_DISPLAY_ORDER so sequential pairing matches ESPN bracket
-  const round16Teams = useMemo(() => {
-    const r32Winners = Array.from({ length: 16 }, (_, i) => teamById.get(picks.round32[i]));
-    return R16_DISPLAY_ORDER.flatMap((i) => {
-      const home = r32Winners[i * 2];
-      const away = r32Winners[i * 2 + 1];
-      return [home, away];
-    });
-  }, [picks.round32, teamById]);
+  const semiSlots = useMemo(
+    () => Array.from({ length: 4 }, (_, i) => toSlot(teamById.get(picks.quarters[i]))),
+    [picks.quarters, teamById],
+  );
 
-  const quarterTeams = getTeamsFromPicks("round16", 8);
-  const semiTeams = getTeamsFromPicks("quarters", 4);
-  const finalTeams = getTeamsFromPicks("semis", 2);
+  const finalSlots = useMemo(
+    () => Array.from({ length: 2 }, (_, i) => toSlot(teamById.get(picks.semis[i]))),
+    [picks.semis, teamById],
+  );
+
   const championTeam = teamById.get(picks.final[0]);
 
   function clearBracket() {
@@ -301,9 +320,8 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
   function restoreSeeds() {
     const newSelections = buildDefaultGroupSelections(teams, groups);
     setSelections(newSelections);
-    // Pre-fill picks from any already-played knockout matches
-    const preFilled = prefillPicksFromMatches(knockoutMatches, teamById);
-    setPicks(preFilled);
+    // Pre-fill picks from any already-completed knockout matches, clear the rest.
+    setPicks(prefillPicksFromMatches(knockoutMatches, teamById));
   }
 
   function changeGroupRole(group: string, role: GroupRole, teamId: string) {
@@ -320,10 +338,7 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
       if (!selection.thirdAdvances && thirdPlaceCount >= 8) return current;
       return {
         ...current,
-        [group]: {
-          ...selection,
-          thirdAdvances: !selection.thirdAdvances,
-        },
+        [group]: { ...selection, thirdAdvances: !selection.thirdAdvances },
       };
     });
     clearBracket();
@@ -340,29 +355,70 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
     });
   }
 
-  function simulateRound(roundTeams: Team[]) {
-    return pairTeams(roundTeams).map(([teamA, teamB]) => simulateKnockout(teamA, teamB));
-  }
-
   function runSimulation() {
-    if (!fieldComplete) return;
-    const r32Teams = r32SimTeams.length === 32 ? r32SimTeams : qualifiedTeams;
-    const round32Winners = simulateRound(r32Teams);
-    const r16InputTeams = R16_DISPLAY_ORDER.flatMap((i) => {
-      const home = round32Winners[i * 2];
-      const away = round32Winners[i * 2 + 1];
-      return [home, away].filter(Boolean) as Team[];
+    // Build 32 sim teams using unchecked resolution (projects current-standings leaders
+    // for incomplete groups and the best-8 third-place selection for 3rd-place slots).
+    const simTeams = buildR32SimTeams(knockoutMatches, selections, teamById);
+
+    // Preserve picks from already-completed knockout matches; simulate the rest.
+    const confirmed = prefillPicksFromMatches(knockoutMatches, teamById);
+
+    // Simulate R32: 32 teams → 16 winners, in R32 display order.
+    const r32Winners = simTeams.map((t, i) => {
+      // If the pair has a confirmed result, use that winner.
+      const pairIdx = Math.floor(i / 2);
+      if (confirmed.round32[pairIdx]) return teamById.get(confirmed.round32[pairIdx]);
+      return t;
     });
-    const round16Winners = simulateRound(r16InputTeams);
-    const quarterWinners = simulateRound(round16Winners);
-    const semiWinners = simulateRound(quarterWinners);
-    const finalWinner = simulateRound(semiWinners);
+    // Build winner-per-pair by simulating each pair that doesn't have a confirmed result.
+    const round32Picks: string[] = Array.from({ length: 16 }, (_, pairIdx) => {
+      if (confirmed.round32[pairIdx]) return confirmed.round32[pairIdx];
+      const a = r32Winners[pairIdx * 2];
+      const b = r32Winners[pairIdx * 2 + 1];
+      if (!a || !b) return confirmed.round32[pairIdx] ?? "";
+      return simulateKnockout(a, b).id;
+    });
+
+    // R16: winners flow sequentially from R32 (no reordering needed).
+    const r16Input = round32Picks.map((id) => teamById.get(id)).filter(Boolean) as Team[];
+    const round16Picks: string[] = Array.from({ length: 8 }, (_, pairIdx) => {
+      if (confirmed.round16[pairIdx]) return confirmed.round16[pairIdx];
+      const a = r16Input[pairIdx * 2];
+      const b = r16Input[pairIdx * 2 + 1];
+      if (!a || !b) return "";
+      return simulateKnockout(a, b).id;
+    });
+
+    const qfInput = round16Picks.map((id) => teamById.get(id)).filter(Boolean) as Team[];
+    const quarterPicks: string[] = Array.from({ length: 4 }, (_, pairIdx) => {
+      if (confirmed.quarters[pairIdx]) return confirmed.quarters[pairIdx];
+      const a = qfInput[pairIdx * 2];
+      const b = qfInput[pairIdx * 2 + 1];
+      if (!a || !b) return "";
+      return simulateKnockout(a, b).id;
+    });
+
+    const sfInput = quarterPicks.map((id) => teamById.get(id)).filter(Boolean) as Team[];
+    const semiPicks: string[] = Array.from({ length: 2 }, (_, pairIdx) => {
+      if (confirmed.semis[pairIdx]) return confirmed.semis[pairIdx];
+      const a = sfInput[pairIdx * 2];
+      const b = sfInput[pairIdx * 2 + 1];
+      if (!a || !b) return "";
+      return simulateKnockout(a, b).id;
+    });
+
+    const finalInput = semiPicks.map((id) => teamById.get(id)).filter(Boolean) as Team[];
+    const finalPicks: string[] = [
+      confirmed.final[0] ??
+        (finalInput[0] && finalInput[1] ? simulateKnockout(finalInput[0], finalInput[1]).id : ""),
+    ];
+
     setPicks({
-      round32: round32Winners.map((team) => team.id),
-      round16: round16Winners.map((team) => team.id),
-      quarters: quarterWinners.map((team) => team.id),
-      semis: semiWinners.map((team) => team.id),
-      final: finalWinner.map((team) => team.id),
+      round32: round32Picks,
+      round16: round16Picks,
+      quarters: quarterPicks,
+      semis: semiPicks,
+      final: finalPicks,
     });
   }
 
@@ -371,11 +427,7 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
       <button className="ghost-button" onClick={clearBracket}>
         <RotateCcw size={15} /> Clear results
       </button>
-      <button
-        className="primary-button"
-        onClick={runSimulation}
-        disabled={!fieldComplete}
-      >
+      <button className="primary-button" onClick={runSimulation} disabled={!fieldComplete}>
         <Dices size={16} /> Simulate tournament
       </button>
     </>
@@ -388,8 +440,8 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
           <span className="eyebrow">Complete knockout path</span>
           <h2>32-team bracket simulator</h2>
           <p>
-            Set the qualifiers from every group, then pick each result or
-            simulate the complete route from the Round of 32 to the title.
+            Set the qualifiers from every group, then pick each result or simulate
+            the complete route from the Round of 32 to the title.
           </p>
         </div>
         <div className="lab-actions">{actions}</div>
@@ -407,8 +459,8 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
               <Settings2 size={17} /> Choose the 32 teams
             </strong>
             <p>
-              Each group sends its winner and runner-up. Select eight third-place
-              teams to complete the field.
+              Each group sends its winner and runner-up. Select eight third-place teams
+              to complete the field.
             </p>
           </div>
           <div className="qualifier-status">
@@ -434,28 +486,17 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
                     <div className="group-seed-title">
                       <span>Group {group}</span>
                       <button
-                        className={
-                          selection.thirdAdvances
-                            ? "third-toggle active"
-                            : "third-toggle"
-                        }
+                        className={selection.thirdAdvances ? "third-toggle active" : "third-toggle"}
                         onClick={() => toggleThirdPlace(group)}
                         aria-pressed={selection.thirdAdvances}
-                        disabled={
-                          !selection.thirdAdvances && thirdPlaceCount >= 8
-                        }
+                        disabled={!selection.thirdAdvances && thirdPlaceCount >= 8}
                         title={
                           selection.thirdAdvances
                             ? "Remove third-place qualifier"
                             : "Advance this group's third-place team"
                         }
                       >
-                        {selection.thirdAdvances ? (
-                          <Check size={12} />
-                        ) : (
-                          "+"
-                        )}{" "}
-                        Third advances
+                        {selection.thirdAdvances ? <Check size={12} /> : "+"} Third advances
                       </button>
                     </div>
                     <div className="group-seed-fields">
@@ -468,13 +509,7 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
                               <Flag team={selectedTeam} size="sm" />
                               <select
                                 value={selection[role]}
-                                onChange={(event) =>
-                                  changeGroupRole(
-                                    group,
-                                    role,
-                                    event.target.value,
-                                  )
-                                }
+                                onChange={(e) => changeGroupRole(group, role, e.target.value)}
                               >
                                 {options.map((team) => (
                                   <option value={team.id} key={team.id}>
@@ -496,7 +531,7 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
           <div className="qualifier-footer">
             <span>
               {groups.some((g) => g.standings.some((s) => s.played > 0))
-                ? "Field derived from live group standings."
+                ? "Field derived from live group standings. ~ indicates group not yet finished."
                 : "Defaults use the highest model-rated teams in each group."}
             </span>
             <button onClick={restoreSeeds}>Restore current standings</button>
@@ -507,7 +542,7 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
       <section className="panel bracket-board bracket-board-full">
         <BracketRound
           label="Round of 32"
-          teams={r32DisplayTeams}
+          slots={r32Slots}
           labels={r32Labels}
           matchCount={16}
           picks={picks.round32}
@@ -516,7 +551,7 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
         />
         <BracketRound
           label="Round of 16"
-          teams={round16Teams}
+          slots={round16Slots}
           matchCount={8}
           picks={picks.round16}
           metas={bracketMetas.round16}
@@ -525,7 +560,7 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
         />
         <BracketRound
           label="Quarterfinals"
-          teams={quarterTeams}
+          slots={quarterSlots}
           matchCount={4}
           picks={picks.quarters}
           metas={bracketMetas.quarters}
@@ -534,7 +569,7 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
         />
         <BracketRound
           label="Semifinals"
-          teams={semiTeams}
+          slots={semiSlots}
           matchCount={2}
           picks={picks.semis}
           metas={bracketMetas.semis}
@@ -543,7 +578,7 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
         />
         <BracketRound
           label="Final"
-          teams={finalTeams}
+          slots={finalSlots}
           matchCount={1}
           picks={picks.final}
           metas={bracketMetas.final}
@@ -582,9 +617,9 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
       </div>
 
       <p className="wide-note">
-        Bracket draw order follows the official FIFA Round of 32 schedule.
-        Group qualifiers reflect live standings; change any selector to explore
-        alternate scenarios.
+        Bracket draw order follows the official FIFA Round of 32 schedule. ~ marks
+        teams whose group stage hasn't finished yet. Group qualifiers reflect live
+        standings; change any selector to explore alternate scenarios.
       </p>
     </div>
   );

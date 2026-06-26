@@ -7,6 +7,7 @@ import {
   buildR32DisplayTeams,
   formatBracketDate,
   getQualifiedTeams,
+  isGroupComplete,
   prefillPicksFromMatches,
   R16_DISPLAY_ORDER,
   R32_DISPLAY_ORDER,
@@ -135,6 +136,40 @@ describe("R32 / R16 display ordering", () => {
   });
 });
 
+const completedGroupA: Group = {
+  name: "A",
+  standings: [
+    { teamId: "a", played: 3, won: 3, drawn: 0, lost: 0, points: 9, goalsFor: 6, goalsAgainst: 0, goalDifference: 6 },
+    { teamId: "b", played: 3, won: 2, drawn: 0, lost: 1, points: 6, goalsFor: 4, goalsAgainst: 2, goalDifference: 2 },
+    { teamId: "c", played: 3, won: 1, drawn: 0, lost: 2, points: 3, goalsFor: 2, goalsAgainst: 4, goalDifference: -2 },
+    { teamId: "d", played: 3, won: 0, drawn: 0, lost: 3, points: 0, goalsFor: 0, goalsAgainst: 6, goalDifference: -6 },
+  ],
+};
+
+const incompleteGroupA: Group = {
+  name: "A",
+  standings: [
+    { teamId: "a", played: 2, won: 2, drawn: 0, lost: 0, points: 6, goalsFor: 4, goalsAgainst: 0, goalDifference: 4 },
+    { teamId: "b", played: 2, won: 1, drawn: 0, lost: 1, points: 3, goalsFor: 2, goalsAgainst: 2, goalDifference: 0 },
+    { teamId: "c", played: 2, won: 0, drawn: 1, lost: 1, points: 1, goalsFor: 1, goalsAgainst: 2, goalDifference: -1 },
+    { teamId: "d", played: 2, won: 0, drawn: 0, lost: 2, points: 0, goalsFor: 0, goalsAgainst: 3, goalDifference: -3 },
+  ],
+};
+
+describe("isGroupComplete", () => {
+  it("returns true when all teams have played 3 matches", () => {
+    expect(isGroupComplete("A", [completedGroupA])).toBe(true);
+  });
+
+  it("returns false when any team has played fewer than 3 matches", () => {
+    expect(isGroupComplete("A", [incompleteGroupA])).toBe(false);
+  });
+
+  it("returns false for unknown group", () => {
+    expect(isGroupComplete("Z", [completedGroupA])).toBe(false);
+  });
+});
+
 describe("resolveKnockoutTeam", () => {
   const teamA: Team = { id: "a", name: "Team A", code: "TEA", iso2: "US", flag: "", group: "A" };
   const teamB: Team = { id: "b", name: "Team B", code: "TEB", iso2: "US", flag: "", group: "A" };
@@ -144,23 +179,31 @@ describe("resolveKnockoutTeam", () => {
     A: { winnerId: "a", runnerUpId: "b", thirdId: "c", thirdAdvances: true },
   };
 
-  it("returns team directly when ID is in teamById", () => {
+  it("returns team directly when ID is in teamById (ESPN confirmed)", () => {
     expect(resolveKnockoutTeam("a", "anything", selections, teamById)).toBe(teamA);
   });
 
-  it("resolves 'Group A Winner' to the winner", () => {
-    expect(resolveKnockoutTeam("unknown-id", "Group A Winner", selections, teamById)).toBe(teamA);
+  it("resolves 'Group A Winner' to the winner when group is complete", () => {
+    expect(resolveKnockoutTeam("unknown-id", "Group A Winner", selections, teamById, [completedGroupA])).toBe(teamA);
   });
 
-  it("resolves 'Group A 2nd Place' to runner-up", () => {
-    expect(resolveKnockoutTeam("unknown-id", "Group A 2nd Place", selections, teamById)).toBe(teamB);
+  it("returns undefined for 'Group A Winner' when group is NOT complete", () => {
+    expect(resolveKnockoutTeam("unknown-id", "Group A Winner", selections, teamById, [incompleteGroupA])).toBeUndefined();
   });
 
-  it("resolves third-place slot when the group advances", () => {
-    expect(resolveKnockoutTeam("unknown-id", "Third Place Group A/B/C/D/F", selections, teamById)).toBe(teamC);
+  it("resolves 'Group A 2nd Place' to runner-up when group is complete", () => {
+    expect(resolveKnockoutTeam("unknown-id", "Group A 2nd Place", selections, teamById, [completedGroupA])).toBe(teamB);
   });
 
-  it("returns undefined for truly unresolvable slots", () => {
+  it("returns undefined for 'Group A 2nd Place' when group is NOT complete", () => {
+    expect(resolveKnockoutTeam("unknown-id", "Group A 2nd Place", selections, teamById, [incompleteGroupA])).toBeUndefined();
+  });
+
+  it("never resolves third-place slots from selections (must wait for ESPN confirmation)", () => {
+    expect(resolveKnockoutTeam("unknown-id", "Third Place Group A/B/C/D/F", selections, teamById, [completedGroupA])).toBeUndefined();
+  });
+
+  it("returns undefined for round-result references", () => {
     expect(resolveKnockoutTeam("unknown-id", "Round of 32 1 Winner", selections, teamById)).toBeUndefined();
   });
 });

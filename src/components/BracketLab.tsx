@@ -227,13 +227,15 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
   ).length;
   const fieldComplete = qualifiedTeams.length === 32 && thirdPlaceCount === 8;
 
-  // Build the R32 display teams from ESPN knockout match data (real draw order)
+  // Build the R32 display teams from ESPN knockout match data (real draw order).
+  // Teams only appear when ESPN has confirmed them (group is fully done).
   const r32DisplayTeams = useMemo(
-    () => buildR32DisplayTeams(knockoutMatches, selections, teamById),
-    [knockoutMatches, selections, teamById],
+    () => buildR32DisplayTeams(knockoutMatches, selections, teamById, groups),
+    [knockoutMatches, selections, teamById, groups],
   );
 
-  // Labels for placeholder slots (e.g. "Group I Winner") to show in TBD cells
+  // Labels for placeholder slots — show group position text (e.g. "Group I Winner")
+  // when the team isn't confirmed yet, or the team name when confirmed.
   const r32Labels = useMemo(() => {
     const r32Sorted = [...knockoutMatches.filter((m) => m.type === "round-of-32")].sort(
       (a, b) => (a.utcDate ? Date.parse(a.utcDate) : 0) - (b.utcDate ? Date.parse(b.utcDate) : 0),
@@ -243,14 +245,14 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
     ).flatMap((i) => {
       const m = r32Sorted[i];
       if (!m) return ["TBD", "TBD"];
-      const homeResolved = resolveKnockoutTeam(m.homeId, m.homeName, selections, teamById);
-      const awayResolved = resolveKnockoutTeam(m.awayId, m.awayName, selections, teamById);
+      const homeResolved = resolveKnockoutTeam(m.homeId, m.homeName, selections, teamById, groups);
+      const awayResolved = resolveKnockoutTeam(m.awayId, m.awayName, selections, teamById, groups);
       return [
         homeResolved ? homeResolved.name : m.homeName,
         awayResolved ? awayResolved.name : m.awayName,
       ];
     });
-  }, [knockoutMatches, selections, teamById]);
+  }, [knockoutMatches, selections, teamById, groups]);
 
   // Match metadata (date + venue) for each bracket round, in display order
   const bracketMetas = useMemo(

@@ -190,26 +190,35 @@ export function pairTeams(teams: Team[]) {
   );
 }
 
-// Parses "Group A Winner" / "Group B 2nd Place" / "Group C 3rd Place" labels
-// and resolves to a team ID from current group selections.
+// A group is "complete" when all 4 teams have played all 3 group-stage matches.
+export function isGroupComplete(groupName: string, groups: Group[]): boolean {
+  const group = groups.find((g) => g.name === groupName);
+  if (!group || group.standings.length === 0) return false;
+  return group.standings.every((s) => s.played >= 3);
+}
+
+// Parses "Group A Winner" / "Group B 2nd Place" labels and resolves to a team ID,
+// but ONLY when that group has fully completed all its matches.
+// Third-place slots ("Third Place Group A/B/C/D/F") are never resolved here —
+// they require FIFA's post-group-stage selection; ESPN fills them directly once confirmed.
 function resolveGroupPositionId(
   label: string,
   selections: GroupSelections,
+  groups: Group[],
 ): string | undefined {
   const winnerMatch = /^Group\s+([A-L])\s+(?:Winner|1st\s+Place)$/i.exec(label);
-  if (winnerMatch) return selections[winnerMatch[1].toUpperCase()]?.winnerId;
-
-  const runnerUpMatch = /^Group\s+([A-L])\s+(?:2nd\s+Place|Runner.?[Uu]p)$/i.exec(label);
-  if (runnerUpMatch) return selections[runnerUpMatch[1].toUpperCase()]?.runnerUpId;
-
-  const thirdMatch = /^Third\s+Place\s+Group\s+([A-L\/]+)$/i.exec(label);
-  if (thirdMatch) {
-    const groups = thirdMatch[1].split("/").map((g) => g.trim().toUpperCase());
-    // Find which group in the list has its 3rd place advancing
-    const advancingGroup = groups.find((g) => selections[g]?.thirdAdvances);
-    if (advancingGroup) return selections[advancingGroup].thirdId;
+  if (winnerMatch) {
+    const g = winnerMatch[1].toUpperCase();
+    return isGroupComplete(g, groups) ? selections[g]?.winnerId : undefined;
   }
 
+  const runnerUpMatch = /^Group\s+([A-L])\s+(?:2nd\s+Place|Runner.?[Uu]p)$/i.exec(label);
+  if (runnerUpMatch) {
+    const g = runnerUpMatch[1].toUpperCase();
+    return isGroupComplete(g, groups) ? selections[g]?.runnerUpId : undefined;
+  }
+
+  // Third-place slots are left as placeholders until ESPN confirms them directly.
   return undefined;
 }
 
@@ -218,13 +227,14 @@ export function resolveKnockoutTeam(
   matchTeamName: string,
   selections: GroupSelections,
   teamById: Map<string, Team>,
+  groups: Group[] = [],
 ): Team | undefined {
-  // If it's a real team in our known teams map
+  // ESPN has already confirmed this team — group is done.
   const direct = teamById.get(matchTeamId);
   if (direct) return direct;
 
-  // Otherwise try resolving a group-position placeholder
-  const resolvedId = resolveGroupPositionId(matchTeamName, selections);
+  // Resolve group-position placeholder, but only when the group is fully complete.
+  const resolvedId = resolveGroupPositionId(matchTeamName, selections, groups);
   if (resolvedId) return teamById.get(resolvedId);
 
   return undefined;
@@ -274,18 +284,21 @@ export function buildBracketMatchMetas(matches: Match[], stadiums: Stadium[]): B
 
 // Build the flat R32 team display array (32 teams, in draw order)
 // by resolving each slot from ESPN match data and group selections.
+// A team only appears when ESPN has confirmed it (group is done); otherwise the
+// slot stays undefined and shows its label as a placeholder.
 export function buildR32DisplayTeams(
   matches: Match[],
   selections: GroupSelections,
   teamById: Map<string, Team>,
+  groups: Group[] = [],
 ): Array<Team | undefined> {
   const r32Sorted = sortByDate(matches.filter((m) => m.type === "round-of-32"));
   return R32_DISPLAY_ORDER.flatMap((i) => {
     const match = r32Sorted[i];
     if (!match) return [undefined, undefined];
     return [
-      resolveKnockoutTeam(match.homeId, match.homeName, selections, teamById),
-      resolveKnockoutTeam(match.awayId, match.awayName, selections, teamById),
+      resolveKnockoutTeam(match.homeId, match.homeName, selections, teamById, groups),
+      resolveKnockoutTeam(match.awayId, match.awayName, selections, teamById, groups),
     ];
   });
 }

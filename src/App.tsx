@@ -373,7 +373,14 @@ function App() {
             initialScenario={initialScenario}
           />
         )}
-        {view === "bracket" && <BracketLab teams={data.teams} />}
+        {view === "bracket" && (
+          <BracketLab
+            teams={data.teams}
+            groups={data.groups}
+            matches={data.matches}
+            stadiums={data.stadiums}
+          />
+        )}
         {view === "compare" && (
           <TeamCompare
             teams={data.teams}

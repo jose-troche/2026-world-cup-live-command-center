@@ -2619,6 +2619,23 @@ i.coral {
   background: rgba(255, 255, 255, 0.02);
 }
 
+.bracket-match-meta {
+  display: block;
+  padding: 5px 11px 4px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bracket-mobile-actions {
+  display: none;
+}
+
 .bracket-pair button {
   width: 100%;
   min-height: 48px;
@@ -3462,6 +3479,21 @@ footer > span {
 
   .bracket-column {
     min-width: 215px;
+  }
+
+  .bracket-mobile-actions {
+    display: flex;
+    position: sticky;
+    bottom: 0;
+    gap: 9px;
+    padding: 12px 16px;
+    background: var(--bg);
+    border-top: 1px solid var(--line);
+    z-index: 10;
+  }
+
+  .bracket-mobile-actions button {
+    flex: 1;
   }
 
   .compare-selector {

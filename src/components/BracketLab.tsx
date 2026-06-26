@@ -9,21 +9,30 @@ import {
 } from "lucide-react";
 import { getRating, simulateKnockout } from "../lib/analytics";
 import {
+  buildBracketMatchMetas,
   buildDefaultGroupSelections,
+  buildR32DisplayTeams,
+  formatBracketDate,
   getQualifiedTeams,
   pairTeams,
+  prefillPicksFromMatches,
+  R16_DISPLAY_ORDER,
   rankTeams,
-  seedRoundOf32,
+  resolveKnockoutTeam,
   updateGroupRole,
   type GroupRole,
   type GroupSelections,
+  type KnockoutMatchMeta,
 } from "../lib/bracket";
-import type { Team } from "../types";
+import type { Group, Match, Stadium, Team } from "../types";
 import { Flag } from "./Flag";
 import { ShareButtons } from "./ShareButtons";
 
 type Props = {
   teams: Team[];
+  groups: Group[];
+  matches: Match[];
+  stadiums: Stadium[];
 };
 
 type RoundKey = "round32" | "round16" | "quarters" | "semis" | "final";
@@ -37,7 +46,8 @@ const emptyPicks = (): Picks => ({
   final: [],
 });
 
-const STORAGE_KEY = "bracketlab-v1";
+// v2: bump version when bracket structure changes (invalidates old localStorage)
+const STORAGE_KEY = "bracketlab-v2";
 
 function loadSaved(): { selections?: GroupSelections; picks?: Picks } {
   try {
@@ -56,17 +66,30 @@ const downstreamRounds: Record<RoundKey, RoundKey[]> = {
   final: [],
 };
 
+function formatMatchMeta(meta: KnockoutMatchMeta | undefined, venueName?: string): string {
+  if (!meta) return "";
+  const venue = venueName ?? meta.venueName;
+  const date = formatBracketDate(meta.localDate);
+  if (venue) return `${date} · ${venue}`;
+  return date;
+}
+
 type PairProps = {
   teams: Array<Team | undefined>;
+  labels?: [string, string];
   winnerId?: string;
+  meta?: KnockoutMatchMeta;
   onPick?: (team: Team) => void;
 };
 
-function Pair({ teams, winnerId, onPick }: PairProps) {
+function Pair({ teams, labels, winnerId, meta, onPick }: PairProps) {
+  const metaText = meta ? formatMatchMeta(meta) : "";
   return (
     <div className="bracket-pair">
+      {metaText && <span className="bracket-match-meta">{metaText}</span>}
       {[0, 1].map((slot) => {
         const team = teams[slot];
+        const label = labels?.[slot];
         return team ? (
           <button
             className={winnerId === team.id ? "winner" : ""}
@@ -81,7 +104,7 @@ function Pair({ teams, winnerId, onPick }: PairProps) {
           </button>
         ) : (
           <div className="bracket-team-placeholder" key={`tbd-${slot}`}>
-            <span>TBD</span>
+            <span>{label ?? "TBD"}</span>
           </div>
         );
       })}
@@ -92,8 +115,10 @@ function Pair({ teams, winnerId, onPick }: PairProps) {
 type RoundProps = {
   label: string;
   teams: Array<Team | undefined>;
+  labels?: string[];
   matchCount: number;
   picks: string[];
+  metas: KnockoutMatchMeta[];
   onPick: (index: number, team: Team) => void;
   className?: string;
 };
@@ -101,8 +126,10 @@ type RoundProps = {
 function BracketRound({
   label,
   teams,
+  labels,
   matchCount,
   picks,
+  metas,
   onPick,
   className = "",
 }: RoundProps) {
@@ -116,7 +143,9 @@ function BracketRound({
         {matchups.map((pair, index) => (
           <Pair
             teams={pair}
+            labels={[labels?.[index * 2] ?? "TBD", labels?.[index * 2 + 1] ?? "TBD"]}
             winnerId={picks[index]}
+            meta={metas[index]}
             onPick={pair.filter(Boolean).length === 2 ? (team) => onPick(index, team) : undefined}
             key={`${label}-${index}`}
           />
@@ -126,27 +155,43 @@ function BracketRound({
   );
 }
 
-export function BracketLab({ teams }: Props) {
+export function BracketLab({ teams, groups, matches, stadiums }: Props) {
   const teamSignature = teams
     .map((team) => `${team.id}:${team.group}:${team.name}`)
     .sort()
     .join("|");
+
+  const groupSignature = groups
+    .flatMap((g) => g.standings.map((s) => `${s.teamId}:${s.points}:${s.played}`))
+    .join("|");
+
   const defaultSelections = useMemo(
-    () => buildDefaultGroupSelections(teams),
-    // Preserve the user's bracket when polling returns unchanged team records.
+    () => buildDefaultGroupSelections(teams, groups),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [teamSignature],
+    [teamSignature, groupSignature],
   );
+
+  const teamById = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams]);
+
+  const knockoutMatches = useMemo(
+    () => matches.filter((m) => m.type !== "group"),
+    [matches],
+  );
+
   const [selections, setSelections] = useState<GroupSelections>(() => {
     const saved = loadSaved();
-    if (saved.selections && Object.keys(saved.selections).length === Object.keys(defaultSelections).length) {
+    if (
+      saved.selections &&
+      Object.keys(saved.selections).length === Object.keys(defaultSelections).length
+    ) {
       return saved.selections;
     }
     return defaultSelections;
   });
+
   const [picks, setPicks] = useState<Picks>(() => loadSaved().picks ?? emptyPicks());
   const [qualifiersOpen, setQualifiersOpen] = useState(true);
-  const teamById = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams]);
+
   const groupTeams = useMemo(() => {
     return Object.fromEntries(
       Object.keys(selections).map((group) => [
@@ -176,16 +221,72 @@ export function BracketLab({ teams }: Props) {
     () => getQualifiedTeams(teams, selections),
     [selections, teams],
   );
-  const seededTeams = useMemo(() => seedRoundOf32(qualifiedTeams), [qualifiedTeams]);
+
   const thirdPlaceCount = Object.values(selections).filter(
     (selection) => selection.thirdAdvances,
   ).length;
   const fieldComplete = qualifiedTeams.length === 32 && thirdPlaceCount === 8;
 
+  // Build the R32 display teams from ESPN knockout match data (real draw order)
+  const r32DisplayTeams = useMemo(
+    () => buildR32DisplayTeams(knockoutMatches, selections, teamById),
+    [knockoutMatches, selections, teamById],
+  );
+
+  // Labels for placeholder slots (e.g. "Group I Winner") to show in TBD cells
+  const r32Labels = useMemo(() => {
+    const r32Sorted = [...knockoutMatches.filter((m) => m.type === "round-of-32")].sort(
+      (a, b) => (a.utcDate ? Date.parse(a.utcDate) : 0) - (b.utcDate ? Date.parse(b.utcDate) : 0),
+    );
+    return (
+      [0, 2, 1, 4, 10, 11, 8, 9, 3, 5, 6, 7, 13, 15, 12, 14] as const
+    ).flatMap((i) => {
+      const m = r32Sorted[i];
+      if (!m) return ["TBD", "TBD"];
+      const homeResolved = resolveKnockoutTeam(m.homeId, m.homeName, selections, teamById);
+      const awayResolved = resolveKnockoutTeam(m.awayId, m.awayName, selections, teamById);
+      return [
+        homeResolved ? homeResolved.name : m.homeName,
+        awayResolved ? awayResolved.name : m.awayName,
+      ];
+    });
+  }, [knockoutMatches, selections, teamById]);
+
+  // Match metadata (date + venue) for each bracket round, in display order
+  const bracketMetas = useMemo(
+    () => buildBracketMatchMetas(knockoutMatches, stadiums),
+    [knockoutMatches, stadiums],
+  );
+
+  // When R32 data is available from ESPN, fall back to seeded teams for sim
+  const hasR32Data = r32DisplayTeams.some(Boolean);
+  // Flat 32-team array for simulation — use ESPN draw order when available
+  const r32SimTeams: Team[] = useMemo(() => {
+    if (hasR32Data) {
+      // Replace undefined slots with teams from qualified list so simulation can run
+      const qualified = [...qualifiedTeams];
+      const used = new Set(r32DisplayTeams.filter(Boolean).map((t) => t!.id));
+      const unplaced = qualified.filter((t) => !used.has(t.id));
+      let unplacedIdx = 0;
+      return r32DisplayTeams.map((t) => t ?? unplaced[unplacedIdx++]).filter((t): t is Team => Boolean(t));
+    }
+    // Fall back to model seeding when no ESPN draw data available
+    return qualifiedTeams;
+  }, [hasR32Data, r32DisplayTeams, qualifiedTeams]);
+
   const getTeamsFromPicks = (round: RoundKey, slots: number) =>
     Array.from({ length: slots }, (_, index) => teamById.get(picks[round][index]));
 
-  const round16Teams = getTeamsFromPicks("round32", 16);
+  // R16 teams: reorder by R16_DISPLAY_ORDER so sequential pairing matches ESPN bracket
+  const round16Teams = useMemo(() => {
+    const r32Winners = Array.from({ length: 16 }, (_, i) => teamById.get(picks.round32[i]));
+    return R16_DISPLAY_ORDER.flatMap((i) => {
+      const home = r32Winners[i * 2];
+      const away = r32Winners[i * 2 + 1];
+      return [home, away];
+    });
+  }, [picks.round32, teamById]);
+
   const quarterTeams = getTeamsFromPicks("round16", 8);
   const semiTeams = getTeamsFromPicks("quarters", 4);
   const finalTeams = getTeamsFromPicks("semis", 2);
@@ -196,8 +297,11 @@ export function BracketLab({ teams }: Props) {
   }
 
   function restoreSeeds() {
-    setSelections(defaultSelections);
-    clearBracket();
+    const newSelections = buildDefaultGroupSelections(teams, groups);
+    setSelections(newSelections);
+    // Pre-fill picks from any already-played knockout matches
+    const preFilled = prefillPicksFromMatches(knockoutMatches, teamById);
+    setPicks(preFilled);
   }
 
   function changeGroupRole(group: string, role: GroupRole, teamId: string) {
@@ -240,8 +344,14 @@ export function BracketLab({ teams }: Props) {
 
   function runSimulation() {
     if (!fieldComplete) return;
-    const round32Winners = simulateRound(seededTeams);
-    const round16Winners = simulateRound(round32Winners);
+    const r32Teams = r32SimTeams.length === 32 ? r32SimTeams : qualifiedTeams;
+    const round32Winners = simulateRound(r32Teams);
+    const r16InputTeams = R16_DISPLAY_ORDER.flatMap((i) => {
+      const home = round32Winners[i * 2];
+      const away = round32Winners[i * 2 + 1];
+      return [home, away].filter(Boolean) as Team[];
+    });
+    const round16Winners = simulateRound(r16InputTeams);
     const quarterWinners = simulateRound(round16Winners);
     const semiWinners = simulateRound(quarterWinners);
     const finalWinner = simulateRound(semiWinners);
@@ -254,18 +364,33 @@ export function BracketLab({ teams }: Props) {
     });
   }
 
+  const actions = (
+    <>
+      <button className="ghost-button" onClick={clearBracket}>
+        <RotateCcw size={15} /> Clear results
+      </button>
+      <button
+        className="primary-button"
+        onClick={runSimulation}
+        disabled={!fieldComplete}
+      >
+        <Dices size={16} /> Simulate tournament
+      </button>
+    </>
+  );
+
   return (
     <div className="lab-stack">
       <section className="lab-intro bracket-intro">
         <div>
           <span className="eyebrow">Complete knockout path</span>
           <h2>32-team bracket simulator</h2>
-          <p>Set the qualifiers from every group, then pick each result or simulate the complete route from the Round of 32 to the title.</p>
+          <p>
+            Set the qualifiers from every group, then pick each result or
+            simulate the complete route from the Round of 32 to the title.
+          </p>
         </div>
-        <div className="lab-actions">
-          <button className="ghost-button" onClick={clearBracket}><RotateCcw size={15} /> Clear results</button>
-          <button className="primary-button" onClick={runSimulation} disabled={!fieldComplete}><Dices size={16} /> Simulate tournament</button>
-        </div>
+        <div className="lab-actions">{actions}</div>
       </section>
 
       <section className="panel qualifier-builder">
@@ -276,8 +401,13 @@ export function BracketLab({ teams }: Props) {
         >
           <div>
             <span className="eyebrow">Qualification field</span>
-            <strong><Settings2 size={17} /> Choose the 32 teams</strong>
-            <p>Each group sends its winner and runner-up. Select eight third-place teams to complete the field.</p>
+            <strong>
+              <Settings2 size={17} /> Choose the 32 teams
+            </strong>
+            <p>
+              Each group sends its winner and runner-up. Select eight third-place
+              teams to complete the field.
+            </p>
           </div>
           <div className="qualifier-status">
             <span>{qualifiersOpen ? "Hide groups" : "Show groups"}</span>
@@ -287,60 +417,87 @@ export function BracketLab({ teams }: Props) {
 
         {qualifiersOpen && (
           <div className="group-seed-grid">
-            {Object.keys(selections).sort().map((group) => {
-              const selection = selections[group];
-              const options = groupTeams[group] ?? [];
-              const roleOptions: Array<{ role: GroupRole; label: string }> = [
-                { role: "winnerId", label: "Winner" },
-                { role: "runnerUpId", label: "Runner-up" },
-                { role: "thirdId", label: "Third place" },
-              ];
-              return (
-                <article className="group-seed-card" key={group}>
-                  <div className="group-seed-title">
-                    <span>Group {group}</span>
-                    <button
-                      className={selection.thirdAdvances ? "third-toggle active" : "third-toggle"}
-                      onClick={() => toggleThirdPlace(group)}
-                      aria-pressed={selection.thirdAdvances}
-                      disabled={!selection.thirdAdvances && thirdPlaceCount >= 8}
-                      title={selection.thirdAdvances ? "Remove third-place qualifier" : "Advance this group's third-place team"}
-                    >
-                      {selection.thirdAdvances ? <Check size={12} /> : "+"} Third advances
-                    </button>
-                  </div>
-                  <div className="group-seed-fields">
-                    {roleOptions.map(({ role, label }) => {
-                      const selectedTeam = teamById.get(selection[role]);
-                      return (
-                        <label key={role}>
-                          <span>{label}</span>
-                          <div>
-                            <Flag team={selectedTeam} size="sm" />
-                            <select
-                              value={selection[role]}
-                              onChange={(event) => changeGroupRole(group, role, event.target.value)}
-                            >
-                              {options.map((team) => (
-                                <option value={team.id} key={team.id}>
-                                  {team.name} · {getRating(team.name)}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </article>
-              );
-            })}
+            {Object.keys(selections)
+              .sort()
+              .map((group) => {
+                const selection = selections[group];
+                const options = groupTeams[group] ?? [];
+                const roleOptions: Array<{ role: GroupRole; label: string }> = [
+                  { role: "winnerId", label: "Winner" },
+                  { role: "runnerUpId", label: "Runner-up" },
+                  { role: "thirdId", label: "Third place" },
+                ];
+                return (
+                  <article className="group-seed-card" key={group}>
+                    <div className="group-seed-title">
+                      <span>Group {group}</span>
+                      <button
+                        className={
+                          selection.thirdAdvances
+                            ? "third-toggle active"
+                            : "third-toggle"
+                        }
+                        onClick={() => toggleThirdPlace(group)}
+                        aria-pressed={selection.thirdAdvances}
+                        disabled={
+                          !selection.thirdAdvances && thirdPlaceCount >= 8
+                        }
+                        title={
+                          selection.thirdAdvances
+                            ? "Remove third-place qualifier"
+                            : "Advance this group's third-place team"
+                        }
+                      >
+                        {selection.thirdAdvances ? (
+                          <Check size={12} />
+                        ) : (
+                          "+"
+                        )}{" "}
+                        Third advances
+                      </button>
+                    </div>
+                    <div className="group-seed-fields">
+                      {roleOptions.map(({ role, label }) => {
+                        const selectedTeam = teamById.get(selection[role]);
+                        return (
+                          <label key={role}>
+                            <span>{label}</span>
+                            <div>
+                              <Flag team={selectedTeam} size="sm" />
+                              <select
+                                value={selection[role]}
+                                onChange={(event) =>
+                                  changeGroupRole(
+                                    group,
+                                    role,
+                                    event.target.value,
+                                  )
+                                }
+                              >
+                                {options.map((team) => (
+                                  <option value={team.id} key={team.id}>
+                                    {team.name} · {getRating(team.name)}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </article>
+                );
+              })}
           </div>
         )}
         {qualifiersOpen && (
           <div className="qualifier-footer">
-            <span>Defaults use the highest model-rated teams in each group.</span>
-            <button onClick={restoreSeeds}>Restore highest seeds</button>
+            <span>
+              {groups.some((g) => g.standings.some((s) => s.played > 0))
+                ? "Field derived from live group standings."
+                : "Defaults use the highest model-rated teams in each group."}
+            </span>
+            <button onClick={restoreSeeds}>Restore current standings</button>
           </div>
         )}
       </section>
@@ -348,9 +505,11 @@ export function BracketLab({ teams }: Props) {
       <section className="panel bracket-board bracket-board-full">
         <BracketRound
           label="Round of 32"
-          teams={seededTeams}
+          teams={r32DisplayTeams}
+          labels={r32Labels}
           matchCount={16}
           picks={picks.round32}
+          metas={bracketMetas.round32}
           onPick={(index, team) => pickWinner("round32", index, team)}
         />
         <BracketRound
@@ -358,6 +517,7 @@ export function BracketLab({ teams }: Props) {
           teams={round16Teams}
           matchCount={8}
           picks={picks.round16}
+          metas={bracketMetas.round16}
           onPick={(index, team) => pickWinner("round16", index, team)}
           className="round-16"
         />
@@ -366,6 +526,7 @@ export function BracketLab({ teams }: Props) {
           teams={quarterTeams}
           matchCount={4}
           picks={picks.quarters}
+          metas={bracketMetas.quarters}
           onPick={(index, team) => pickWinner("quarters", index, team)}
           className="quarterfinals"
         />
@@ -374,6 +535,7 @@ export function BracketLab({ teams }: Props) {
           teams={semiTeams}
           matchCount={2}
           picks={picks.semis}
+          metas={bracketMetas.semis}
           onPick={(index, team) => pickWinner("semis", index, team)}
           className="semifinals"
         />
@@ -382,6 +544,7 @@ export function BracketLab({ teams }: Props) {
           teams={finalTeams}
           matchCount={1}
           picks={picks.final}
+          metas={bracketMetas.final}
           onPick={(index, team) => pickWinner("final", index, team)}
           className="final"
         />
@@ -396,7 +559,10 @@ export function BracketLab({ teams }: Props) {
               <strong>{championTeam.name}</strong>
               <span>Winner of this scenario</span>
               <div className="insight-share-row">
-                <ShareButtons title={`My 2026 World Cup bracket: ${championTeam.name} wins — Touchline 26`} url={window.location.href} />
+                <ShareButtons
+                  title={`My 2026 World Cup bracket: ${championTeam.name} wins — Touchline 26`}
+                  url={window.location.href}
+                />
               </div>
             </>
           ) : (
@@ -407,7 +573,17 @@ export function BracketLab({ teams }: Props) {
           )}
         </div>
       </section>
-      <p className="wide-note">The initial field and draw are model-seeded scenarios, not the official FIFA knockout pairings. Change any group selection to explore a different tournament path.</p>
+
+      {/* Mobile action bar — sticky at bottom so users can always simulate */}
+      <div className="bracket-mobile-actions" aria-hidden="true">
+        {actions}
+      </div>
+
+      <p className="wide-note">
+        Bracket draw order follows the official FIFA Round of 32 schedule.
+        Group qualifiers reflect live standings; change any selector to explore
+        alternate scenarios.
+      </p>
     </div>
   );
 }

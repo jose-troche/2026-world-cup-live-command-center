@@ -217,7 +217,9 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
   });
 
   const [picks, setPicks] = useState<Picks>(() => loadSaved().picks ?? emptyPicks());
-  const [qualifiersOpen, setQualifiersOpen] = useState(true);
+  const [qualifiersOpen, setQualifiersOpen] = useState(
+    () => !matches.filter((m) => m.type === "group").every((m) => m.status === "finished"),
+  );
 
   const groupTeams = useMemo(
     () =>

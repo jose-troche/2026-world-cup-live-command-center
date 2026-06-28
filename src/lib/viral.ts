@@ -31,6 +31,7 @@ export type WhatChangedItem = {
   after: number;
   change: number;
   result: string;
+  matchType?: "group" | "knockout";
 };
 
 export type UpsetItem = {
@@ -326,8 +327,9 @@ function estimateFromStandings(
 
 export function buildWhatChanged(data: Pick<TournamentData, "teams" | "matches">, origin = DEFAULT_ORIGIN) {
   const teamById = new Map(data.teams.map((team) => [team.id, team]));
-  return data.matches
-    .filter((match) => match.status === "finished")
+
+  const groupChanges = data.matches
+    .filter((match) => match.status === "finished" && match.type === "group")
     .sort((a, b) => getMatchTime(b) - getMatchTime(a))
     .flatMap((match): WhatChangedItem[] => {
       const before = standingsThrough(data.teams, data.matches, getMatchTime(match), false);
@@ -335,7 +337,6 @@ export function buildWhatChanged(data: Pick<TournamentData, "teams" | "matches">
       const candidates = [teamById.get(match.homeId), teamById.get(match.awayId)].filter(
         (team): team is Team => Boolean(team),
       );
-
       return candidates.map((team) => {
         const opponentName = team.id === match.homeId ? match.awayName : match.homeName;
         const beforeChance = estimateFromStandings(team, before, teamById);
@@ -349,9 +350,43 @@ export function buildWhatChanged(data: Pick<TournamentData, "teams" | "matches">
           after: afterChance,
           change: afterChance - beforeChance,
           result: `${match.homeName} ${match.homeScore}-${match.awayScore} ${match.awayName}`,
+          matchType: "group" as const,
         };
       });
-    })
+    });
+
+  // For knockout matches use pre-match win probability as "before" and 100/0 as "after".
+  const knockoutChanges = data.matches
+    .filter((match) => match.status === "finished" && match.type !== "group" && match.homeScore !== match.awayScore)
+    .sort((a, b) => getMatchTime(b) - getMatchTime(a))
+    .flatMap((match): WhatChangedItem[] => {
+      const prob = winProbability(match);
+      const homeWon = match.homeScore > match.awayScore;
+      const title = `${match.homeName} ${match.homeScore}-${match.awayScore} ${match.awayName}`;
+      const pairs: [string, string, number, boolean][] = [
+        [match.homeId, match.awayName, prob.home, homeWon],
+        [match.awayId, match.homeName, prob.away, !homeWon],
+      ];
+      return pairs.flatMap(([teamId, opponentName, preProb, won]) => {
+        const team = teamById.get(teamId);
+        if (!team) return [];
+        const before = roundPercent(preProb);
+        const after = won ? 100 : 0;
+        return [{
+          matchId: match.id,
+          title,
+          teamName: team.name,
+          opponentName,
+          before,
+          after,
+          change: after - before,
+          result: title,
+          matchType: "knockout" as const,
+        }];
+      });
+    });
+
+  return [...groupChanges, ...knockoutChanges]
     .sort((a, b) => Math.abs(b.change) - Math.abs(a.change))
     .slice(0, 8);
 }
@@ -387,16 +422,40 @@ function teamStanding(team: Team, groups: Group[]) {
   return groups.find((group) => group.name === team.group)?.standings.find((row) => row.teamId === team.id);
 }
 
-export function buildPowerRankings(data: Pick<TournamentData, "teams" | "groups">, limit = 10) {
+export function buildPowerRankings(data: Pick<TournamentData, "teams" | "groups" | "matches">, limit = 10) {
+  const finishedKnockout = data.matches.filter(
+    (m) => m.type !== "group" && m.status === "finished" && m.homeScore !== m.awayScore,
+  );
+  const eliminatedIds = new Set(
+    finishedKnockout.map((m) => (m.homeScore > m.awayScore ? m.awayId : m.homeId)),
+  );
+  const knockoutWinsById = new Map<string, number>();
+  for (const m of finishedKnockout) {
+    const winnerId = m.homeScore > m.awayScore ? m.homeId : m.awayId;
+    knockoutWinsById.set(winnerId, (knockoutWinsById.get(winnerId) ?? 0) + 1);
+  }
+
   return data.teams
     .map((team): Omit<PowerRanking, "rank"> => {
       const standing = teamStanding(team, data.groups);
+      const isEliminated = eliminatedIds.has(team.id);
+      const knockoutWins = knockoutWinsById.get(team.id) ?? 0;
       const points = standing?.points ?? 0;
       const goalDifference = standing?.goalDifference ?? 0;
-      const formScore = points * 4 + goalDifference * 2 + (standing?.goalsFor ?? 0);
+      const formScore = isEliminated
+        ? -20
+        : points * 4 + goalDifference * 2 + (standing?.goalsFor ?? 0) + knockoutWins * 12;
       const score = getRating(team.name) * 0.72 + formScore;
-      const movement = formScore >= 10 ? "rising fast" : formScore >= 4 ? "up" : formScore <= -2 ? "under pressure" : "steady";
-      const note = standing?.played
+      const movement = isEliminated
+        ? "eliminated"
+        : knockoutWins > 0
+        ? "advancing"
+        : formScore >= 10 ? "rising fast" : formScore >= 4 ? "up" : formScore <= -2 ? "under pressure" : "steady";
+      const note = isEliminated
+        ? "eliminated from knockout stage"
+        : knockoutWins > 0
+        ? `${knockoutWins} KO win${knockoutWins > 1 ? "s" : ""} · ${points} pts GS`
+        : standing?.played
         ? `${points} pts, ${goalDifference >= 0 ? "+" : ""}${goalDifference} GD`
         : "pre-tournament model strength";
       return {

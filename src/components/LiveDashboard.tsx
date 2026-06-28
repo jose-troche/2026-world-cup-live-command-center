@@ -72,6 +72,19 @@ function formatVenue(stadium?: Stadium) {
   return location ? `${stadium.name} · ${location}` : stadium.name;
 }
 
+const KNOCKOUT_STAGE_LABELS: Record<string, string> = {
+  "round-of-32": "Round of 32",
+  "round-of-16": "Round of 16",
+  "quarterfinals": "Quarterfinal",
+  "semifinals": "Semifinal",
+  "final": "Final",
+};
+
+function matchStageLabel(match: Match): string {
+  if (match.type === "group") return `Group ${match.group} · Matchday ${match.matchday || 1}`;
+  return KNOCKOUT_STAGE_LABELS[match.type] ?? "Knockout stage";
+}
+
 export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }: Props) {
   const [matchListMode, setMatchListMode] = useState<MatchListMode>("next");
   const teamById = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams]);
@@ -93,13 +106,13 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
   ];
 
   const relevantMatches = matches
-    .filter((item) => item.type === "group" && (matchListMode === "former" ? item.status === "finished" : item.status !== "finished"))
+    .filter((item) => matchListMode === "former" ? item.status === "finished" : item.status !== "finished")
     .sort((a, b) => {
       if (matchListMode === "former") return getMatchDate(b).getTime() - getMatchDate(a).getTime();
       const rank = { live: 0, scheduled: 1, finished: 2 };
       return rank[a.status] - rank[b.status] || getMatchDate(a).getTime() - getMatchDate(b).getTime();
     })
-    .slice(0, 8);
+    .slice(0, 6);
 
   return (
     <div className="dashboard-stack">
@@ -152,7 +165,7 @@ export function LiveDashboard({ match, matches, teams, stadiums, onSelectMatch }
 
       <article className="panel match-stage">
           <div className="panel-kicker">
-            <span>Group {match.group} · Matchday {match.matchday || 1}</span>
+            <span>{matchStageLabel(match)}</span>
             <span className={`status-chip ${match.status}`}>
               {match.status === "live" && <i />}
               {statusLabel(match)}

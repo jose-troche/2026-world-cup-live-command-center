@@ -90,10 +90,13 @@ function buildMoments(content: ViralContent, origin: string, matches: import("..
   const topSwing = content.whatChanged[0];
   if (topSwing) {
     const swingMatch = matches.find((m) => m.id === topSwing.matchId);
+    const swingSummary = topSwing.matchType === "knockout"
+      ? `${topSwing.teamName} ${topSwing.change >= 0 ? "advanced" : "were eliminated"} — odds moved ${topSwing.change >= 0 ? "+" : ""}${topSwing.change}% from a ${topSwing.before}% pre-match position.`
+      : `${topSwing.teamName} advancement odds moved ${topSwing.change >= 0 ? "+" : ""}${topSwing.change}% after ${topSwing.result}.`;
     moments.push({
       eyebrow: "Biggest swing",
       title: topSwing.title,
-      summary: `${topSwing.teamName} advancement odds moved ${topSwing.change >= 0 ? "+" : ""}${topSwing.change}% after ${topSwing.result}.`,
+      summary: swingSummary,
       shareTitle: topSwing.title,
       shareUrl: swingMatch ? `${origin}${getMatchPath(swingMatch)}` : `${origin}/insights`,
       icon: <TrendingUp size={19} />,

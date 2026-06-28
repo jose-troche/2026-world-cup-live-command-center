@@ -33,7 +33,7 @@ type Props = {
 function statusLabel(match: Match) {
   if (match.status === "live") return `${match.minute}' LIVE`;
   if (match.status === "finished") return "FINAL";
-  return formatMatchTime(match);
+  return formatMatchDateAndTime(match);
 }
 
 function parseLocalDate(value: string) {
@@ -47,8 +47,10 @@ function getMatchDate(match: Match) {
   return match.utcDate ? new Date(match.utcDate) : parseLocalDate(match.localDate);
 }
 
-function formatMatchTime(match: Match) {
+function formatMatchDateAndTime(match: Match) {
   return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
     hour: "numeric",
     minute: "2-digit",
   }).format(getMatchDate(match));

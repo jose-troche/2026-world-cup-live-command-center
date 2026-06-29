@@ -3,6 +3,8 @@ import {
   Check,
   ChevronDown,
   Dices,
+  Eye,
+  EyeOff,
   RotateCcw,
   Settings2,
   Trophy,
@@ -49,7 +51,11 @@ const emptyPicks = (): Picks => ({
 
 const STORAGE_KEY = "bracketlab-v3";
 
-function loadSaved(): { selections?: GroupSelections; picks?: Picks } {
+function loadSaved(): {
+  selections?: GroupSelections;
+  picks?: Picks;
+  hideInactive?: boolean;
+} {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : {};
@@ -217,6 +223,9 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
   });
 
   const [picks, setPicks] = useState<Picks>(() => loadSaved().picks ?? emptyPicks());
+  const [hideInactive, setHideInactive] = useState<boolean>(
+    () => loadSaved().hideInactive ?? false,
+  );
   const [qualifiersOpen, setQualifiersOpen] = useState(
     () => !matches.filter((m) => m.type === "group").every((m) => m.status === "finished"),
   );
@@ -244,9 +253,36 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ selections, picks }));
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ selections, picks, hideInactive }),
+      );
     } catch {}
-  }, [selections, picks]);
+  }, [selections, picks, hideInactive]);
+
+  // Keep the bracket in sync with real results: whenever knockout match data
+  // updates (initial load + 45s polling), merge the winners of any finished
+  // knockout matches into the picks so teams that have already advanced show up.
+  // Finished results are authoritative and override stale/manual picks for those
+  // slots; unfinished slots keep the user's own selections.
+  useEffect(() => {
+    const finished = prefillPicksFromMatches(knockoutMatches, teamById);
+    setPicks((current) => {
+      let changed = false;
+      const next = { ...current };
+      (Object.keys(finished) as RoundKey[]).forEach((round) => {
+        const merged = [...current[round]];
+        finished[round].forEach((id, idx) => {
+          if (id && merged[idx] !== id) {
+            merged[idx] = id;
+            changed = true;
+          }
+        });
+        next[round] = merged;
+      });
+      return changed ? next : current;
+    });
+  }, [knockoutMatches, teamById]);
 
   const qualifiedTeams = useMemo(
     () => getQualifiedTeams(teams, selections),
@@ -314,6 +350,20 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
   );
 
   const championTeam = teamById.get(picks.final[0]);
+
+  // A round is "active" once at least one of its slots holds a team. When the
+  // user opts to hide inactive rounds, columns with no teams yet stay hidden
+  // until the bracket progresses far enough to fill them.
+  const roundActive = {
+    round32: r32Slots.some((s) => s.team),
+    round16: round16Slots.some((s) => s.team),
+    quarters: quarterSlots.some((s) => s.team),
+    semis: semiSlots.some((s) => s.team),
+    final: finalSlots.some((s) => s.team),
+    champion: Boolean(championTeam),
+  };
+  const showRound = (key: keyof typeof roundActive) =>
+    !hideInactive || roundActive[key];
 
   function clearBracket() {
     setPicks(emptyPicks());
@@ -426,6 +476,19 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
 
   const actions = (
     <>
+      <button
+        className="ghost-button"
+        onClick={() => setHideInactive((v) => !v)}
+        aria-pressed={hideInactive}
+        title={
+          hideInactive
+            ? "Show every round, including ones not yet reached"
+            : "Hide rounds that have no teams yet"
+        }
+      >
+        {hideInactive ? <Eye size={15} /> : <EyeOff size={15} />}
+        {hideInactive ? "Show all rounds" : "Hide inactive rounds"}
+      </button>
       <button className="ghost-button" onClick={clearBracket}>
         <RotateCcw size={15} /> Clear results
       </button>
@@ -542,51 +605,62 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
       </section>
 
       <section className="panel bracket-board bracket-board-full">
-        <BracketRound
-          label="Round of 32"
-          slots={r32Slots}
-          labels={r32Labels}
-          matchCount={16}
-          picks={picks.round32}
-          metas={bracketMetas.round32}
-          onPick={(index, team) => pickWinner("round32", index, team)}
-        />
-        <BracketRound
-          label="Round of 16"
-          slots={round16Slots}
-          matchCount={8}
-          picks={picks.round16}
-          metas={bracketMetas.round16}
-          onPick={(index, team) => pickWinner("round16", index, team)}
-          className="round-16"
-        />
-        <BracketRound
-          label="Quarterfinals"
-          slots={quarterSlots}
-          matchCount={4}
-          picks={picks.quarters}
-          metas={bracketMetas.quarters}
-          onPick={(index, team) => pickWinner("quarters", index, team)}
-          className="quarterfinals"
-        />
-        <BracketRound
-          label="Semifinals"
-          slots={semiSlots}
-          matchCount={2}
-          picks={picks.semis}
-          metas={bracketMetas.semis}
-          onPick={(index, team) => pickWinner("semis", index, team)}
-          className="semifinals"
-        />
-        <BracketRound
-          label="Final"
-          slots={finalSlots}
-          matchCount={1}
-          picks={picks.final}
-          metas={bracketMetas.final}
-          onPick={(index, team) => pickWinner("final", index, team)}
-          className="final"
-        />
+        {showRound("round32") && (
+          <BracketRound
+            label="Round of 32"
+            slots={r32Slots}
+            labels={r32Labels}
+            matchCount={16}
+            picks={picks.round32}
+            metas={bracketMetas.round32}
+            onPick={(index, team) => pickWinner("round32", index, team)}
+          />
+        )}
+        {showRound("round16") && (
+          <BracketRound
+            label="Round of 16"
+            slots={round16Slots}
+            matchCount={8}
+            picks={picks.round16}
+            metas={bracketMetas.round16}
+            onPick={(index, team) => pickWinner("round16", index, team)}
+            className="round-16"
+          />
+        )}
+        {showRound("quarters") && (
+          <BracketRound
+            label="Quarterfinals"
+            slots={quarterSlots}
+            matchCount={4}
+            picks={picks.quarters}
+            metas={bracketMetas.quarters}
+            onPick={(index, team) => pickWinner("quarters", index, team)}
+            className="quarterfinals"
+          />
+        )}
+        {showRound("semis") && (
+          <BracketRound
+            label="Semifinals"
+            slots={semiSlots}
+            matchCount={2}
+            picks={picks.semis}
+            metas={bracketMetas.semis}
+            onPick={(index, team) => pickWinner("semis", index, team)}
+            className="semifinals"
+          />
+        )}
+        {showRound("final") && (
+          <BracketRound
+            label="Final"
+            slots={finalSlots}
+            matchCount={1}
+            picks={picks.final}
+            metas={bracketMetas.final}
+            onPick={(index, team) => pickWinner("final", index, team)}
+            className="final"
+          />
+        )}
+        {showRound("champion") && (
         <div className="champion-card">
           <span className="round-label">Champion</span>
           <div className={championTeam ? "trophy active" : "trophy"}>
@@ -611,6 +685,7 @@ export function BracketLab({ teams, groups, matches, stadiums }: Props) {
             </>
           )}
         </div>
+        )}
       </section>
 
       {/* Mobile action bar — sticky at bottom so users can always simulate */}
